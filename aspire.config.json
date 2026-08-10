@@ -1,0 +1,5 @@
+{
+  "appHost": {
+    "path": "QuakeReport.AppHost/QuakeReport.AppHost.csproj"
+  }
+}
