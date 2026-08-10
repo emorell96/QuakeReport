@@ -10,6 +10,18 @@ builder.AddAzureContainerAppEnvironment("quake-report-env")
     .WithDashboard(false);
 
 var googleMapsApiKey = builder.AddParameter("google-maps-api-key", secret: true);
+var apexDomain = builder.AddParameter(
+    "apex-domain",
+    "terremoto.com.co",
+    publishValueAsDefault: true);
+var wwwDomain = builder.AddParameter(
+    "www-domain",
+    "www.terremoto.com.co",
+    publishValueAsDefault: true);
+var cloudflareCertificateId = builder.AddParameter(
+    "cloudflare-certificate-id",
+    "/subscriptions/80fb3496-88b6-4097-86c6-efbc21c21cfa/resourceGroups/rg-terremoto-prod/providers/Microsoft.App/managedEnvironments/quakereportenvyksjkeaewt/certificates/terremoto-cloudflare",
+    publishValueAsDefault: true);
 
 var postgres = builder.AddAzurePostgresFlexibleServer("postgres")
     .RunAsContainer(container => container
@@ -89,10 +101,35 @@ var webFrontend = builder.AddProject<Projects.QuakeReport_Web>("webfrontend")
     .WaitFor(apiService)
     .WithAzureUserAssignedIdentity(webFrontendIdentity)
     .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
-    .PublishAsAzureContainerApp((_, app) =>
+    .PublishAsAzureContainerApp((infrastructure, app) =>
     {
         app.Template.Scale.MinReplicas = 1;
         app.Template.Scale.MaxReplicas = 1;
+
+        // Keep the Cloudflare hostnames and their uploaded origin certificate
+        // in the declarative model so subsequent deployments preserve them.
+        var apexDomainParameter = apexDomain.AsProvisioningParameter(
+            infrastructure,
+            "apex_domain");
+        var wwwDomainParameter = wwwDomain.AsProvisioningParameter(
+            infrastructure,
+            "www_domain");
+        var certificateIdParameter = cloudflareCertificateId.AsProvisioningParameter(
+            infrastructure,
+            "cloudflare_certificate_id");
+
+        app.Configuration.Ingress.CustomDomains.Add(new ContainerAppCustomDomain
+        {
+            Name = apexDomainParameter,
+            BindingType = ContainerAppCustomDomainBindingType.SniEnabled,
+            CertificateId = certificateIdParameter,
+        });
+        app.Configuration.Ingress.CustomDomains.Add(new ContainerAppCustomDomain
+        {
+            Name = wwwDomainParameter,
+            BindingType = ContainerAppCustomDomainBindingType.SniEnabled,
+            CertificateId = certificateIdParameter,
+        });
     });
 
 if (builder.ExecutionContext.IsPublishMode)
