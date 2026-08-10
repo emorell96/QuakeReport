@@ -1,5 +1,14 @@
 # QuakeReport
 
+## Descripción
+
+QuakeReport es una herramienta para que la ciudadanía reporte daños causados
+por un terremoto: describe lo ocurrido, indica la gravedad y el tipo de daño,
+comparte su ubicación (por GPS o buscando la dirección) y adjunta fotos o
+videos como evidencia. Los reportes se listan de mayor a menor impacto, para
+ayudar a priorizar la respuesta donde más se necesita. Este MVP nace a raíz
+del terremoto en Colombia y está disponible en terremoto.com.co.
+
 ## Azure deployment
 
 The production AppHost model targets Azure Container Apps in Brazil South. It
