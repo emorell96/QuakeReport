@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
+using QuakeReport.Contracts.Dtos;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -19,6 +20,6 @@ public class EarthquakesController(ActiveEarthquakeService activeEarthquakeServi
             return NotFound();
         }
 
-        return Ok(EarthquakeResponse.FromEntity(earthquake));
+        return Ok(earthquake.ToResponse());
     }
 }

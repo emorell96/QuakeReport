@@ -1,3 +1,5 @@
+using QuakeReport.Contracts.Enums;
+
 namespace QuakeReport.Data.Models;
 
 /// <summary>A photo or video attached to a <see cref="DamageReport"/>.</summary>

@@ -25,6 +25,7 @@
     <ProjectReference Include="..\QuakeReport.ApiService\QuakeReport.ApiService.csproj" />
     <ProjectReference Include="..\QuakeReport.Data\QuakeReport.Data.csproj" />
     <ProjectReference Include="..\QuakeReport.Web\QuakeReport.Web.csproj" />
+    <ProjectReference Include="..\QuakeReport.Contracts\QuakeReport.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

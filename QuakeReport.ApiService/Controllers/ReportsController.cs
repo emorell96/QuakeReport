@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
+using QuakeReport.Contracts.Dtos;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 
@@ -28,7 +29,7 @@ public class ReportsController(
             .ThenByDescending(r => r.CreatedAt)
             .ToListAsync(cancellationToken);
 
-        return Ok(reports.Select(DamageReportResponse.FromEntity));
+        return Ok(reports.Select(r => r.ToResponse()));
     }
 
     [HttpGet("{id:guid}")]
@@ -45,7 +46,7 @@ public class ReportsController(
             return NotFound();
         }
 
-        return Ok(DamageReportResponse.FromEntity(report));
+        return Ok(report.ToResponse());
     }
 
     [HttpPost]
@@ -76,7 +77,7 @@ public class ReportsController(
         dbContext.DamageReports.Add(report);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return CreatedAtAction(nameof(GetById), new { id = report.Id }, DamageReportResponse.FromEntity(report));
+        return CreatedAtAction(nameof(GetById), new { id = report.Id }, report.ToResponse());
     }
 
     [HttpPost("{id:guid}/media")]
@@ -131,6 +132,6 @@ public class ReportsController(
         dbContext.ReportMedia.Add(media);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return CreatedAtAction(nameof(GetById), new { id }, ReportMediaResponse.FromEntity(media));
+        return CreatedAtAction(nameof(GetById), new { id }, media.ToResponse());
     }
 }

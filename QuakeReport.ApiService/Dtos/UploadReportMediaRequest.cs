@@ -1,4 +1,4 @@
-using QuakeReport.Data.Models;
+using QuakeReport.Contracts.Enums;
 
 namespace QuakeReport.ApiService.Dtos;
 

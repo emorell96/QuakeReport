@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
+using QuakeReport.Contracts.Enums;
 using QuakeReport.Data.Models;
 
 namespace QuakeReport.Tests;
@@ -42,7 +43,7 @@ public class DtoAndDataTests
             Media = [media],
         };
 
-        var result = DamageReportResponse.FromEntity(report);
+        var result = report.ToResponse();
 
         Assert.AreEqual(reportId, result.Id);
         Assert.AreEqual(earthquakeId, result.EarthquakeId);
@@ -74,7 +75,7 @@ public class DtoAndDataTests
             Longitude = 2,
         };
 
-        var result = DamageReportResponse.FromEntity(report);
+        var result = report.ToResponse();
 
         Assert.IsNull(result.StructureType);
         Assert.IsNull(result.StructureSize);

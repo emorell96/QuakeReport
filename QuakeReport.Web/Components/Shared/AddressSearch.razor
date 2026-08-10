@@ -1,0 +1,73 @@
+@using Microsoft.JSInterop
+@inject IJSRuntime JsRuntime
+@inject IConfiguration Configuration
+@implements IAsyncDisposable
+
+<div @ref="_wrapperElement">
+    <MudTextField T="string"
+                   Label="Address (optional - search to set the exact location)"
+                   Value="@Address"
+                   ValueChanged="OnAddressTyped"
+                   Adornment="Adornment.Start"
+                   AdornmentIcon="@Icons.Material.Filled.Search"
+                   Placeholder="Search for an address..."
+                   Immediate="true" />
+</div>
+
+@code {
+    private ElementReference _wrapperElement;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<AddressSearch>? _dotNetRef;
+
+    [Parameter]
+    public string? Address { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> AddressChanged { get; set; }
+
+    /// <summary>Fired when a place is picked from the dropdown, with its coordinates.</summary>
+    [Parameter]
+    public EventCallback<(string Address, double Latitude, double Longitude)> OnPlaceSelected { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        var apiKey = Configuration["GOOGLE_MAPS_API_KEY"];
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return;
+        }
+
+        _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/googleMaps.js");
+        _dotNetRef = DotNetObjectReference.Create(this);
+        await _module.InvokeVoidAsync("attachAutocomplete", apiKey, _wrapperElement, _dotNetRef);
+    }
+
+    private Task OnAddressTyped(string? value)
+    {
+        Address = value;
+        return AddressChanged.InvokeAsync(value);
+    }
+
+    [JSInvokable]
+    public async Task OnPlaceSelectedFromJs(string formattedAddress, double latitude, double longitude)
+    {
+        Address = formattedAddress;
+        await AddressChanged.InvokeAsync(formattedAddress);
+        await OnPlaceSelected.InvokeAsync((formattedAddress, latitude, longitude));
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        if (_module is not null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+}

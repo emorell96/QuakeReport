@@ -1,17 +1,20 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UserSecretsId>773a4876-aae2-4fc1-abaf-2f5a12b5a46f</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\QuakeReport.ServiceDefaults\QuakeReport.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\QuakeReport.Contracts\QuakeReport.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.StackExchange.Redis.OutputCaching" Version="13.4.6" />
+    <PackageReference Include="MudBlazor" Version="9.8.0" />
   </ItemGroup>
 
 </Project>

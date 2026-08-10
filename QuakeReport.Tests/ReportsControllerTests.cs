@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Controllers;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
+using QuakeReport.Contracts.Dtos;
+using QuakeReport.Contracts.Enums;
 using QuakeReport.Data.Models;
 
 namespace QuakeReport.Tests;

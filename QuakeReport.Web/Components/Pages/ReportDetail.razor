@@ -1,0 +1,89 @@
+@page "/report/{Id:guid}"
+@inject QuakeReportApiClient ApiClient
+
+<PageTitle>Report Detail</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (_report is null)
+{
+    <MudAlert Severity="Severity.Error">Report not found.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Spacing="2" Class="mb-4">
+        <MudChip T="string" Color="@DisplayHelpers.SeverityColor(_report.Severity)">@_report.Severity.Humanize()</MudChip>
+        @if (_report.StructureType is not null)
+        {
+            <MudChip T="string" Variant="Variant.Outlined">
+                @_report.StructureType.Value.Humanize()@(_report.StructureSize is not null ? $" ({_report.StructureSize.Value.Humanize()})" : "")
+            </MudChip>
+        }
+    </MudStack>
+
+    <MudText Typo="Typo.body1" Class="mb-4">@_report.Description</MudText>
+
+    @if (_report.DamageSigns != DamageSign.None)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Observed damage</MudText>
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-4">
+            @foreach (var sign in _report.DamageSigns.Split())
+            {
+                <MudChip T="string" Size="Size.Small">@sign.Humanize()</MudChip>
+            }
+        </MudStack>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_report.Address))
+    {
+        <MudText Typo="Typo.body2" Class="mb-2">@_report.Address</MudText>
+    }
+
+    <MudPaper Class="mb-4" Elevation="1" Style="overflow:hidden">
+        <iframe title="Report location" width="100%" height="300" style="border:0"
+                src="@DisplayHelpers.GoogleMapsEmbedUrl(_report.Latitude, _report.Longitude)"></iframe>
+    </MudPaper>
+    <MudLink Href="@DisplayHelpers.GoogleMapsLinkUrl(_report.Latitude, _report.Longitude)" Target="_blank" Class="mb-4 d-block">
+        Open in Google Maps
+    </MudLink>
+
+    @if (_report.Media.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Media</MudText>
+        <MudGrid>
+            @foreach (var media in _report.Media)
+            {
+                <MudItem xs="6" sm="4">
+                    @if (media.MediaType == MediaType.Video)
+                    {
+                        <video controls width="100%" src="@media.BlobUrl"></video>
+                    }
+                    else
+                    {
+                        <MudImage Src="@media.BlobUrl" Fluid="true" />
+                    }
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 d-block">
+        Reported @_report.CreatedAt.ToLocalTime().ToString("f")
+    </MudText>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private DamageReportResponse? _report;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _report = await ApiClient.GetReportAsync(Id);
+        _loading = false;
+    }
+}

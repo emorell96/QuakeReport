@@ -1,0 +1,278 @@
+@page "/report/new"
+@inject QuakeReportApiClient ApiClient
+@inject GeolocationService Geolocation
+@inject IJSRuntime JsRuntime
+@inject IConfiguration Configuration
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Report Damage</PageTitle>
+
+<MudText Typo="Typo.h5" Class="mb-4">Report Damage</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Location</MudText>
+
+    @switch (_locationState)
+    {
+        case LocationState.Loading:
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
+                <MudText>Getting your location... check for a browser permission prompt (often near the address bar).</MudText>
+            </MudStack>
+            break;
+        case LocationState.Failed:
+            <MudAlert Severity="Severity.Error" Class="mb-2">
+                @_locationErrorMessage Location is required to submit a report.
+            </MudAlert>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RequestLocationAsync">Retry</MudButton>
+            break;
+        case LocationState.Success:
+            <MudAlert Severity="Severity.Success" Class="mb-2">
+                Location captured (@_latitude?.ToString("0.0000"), @_longitude?.ToString("0.0000"))
+            </MudAlert>
+            break;
+    }
+
+    <AddressSearch @bind-Address="_address" OnPlaceSelected="OnPlaceSelected" />
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudTextField T="string" Label="Description" @bind-Value="_description" Lines="3" Required="true"
+                   RequiredError="Description is required" Class="mb-4" />
+
+    <MudSelect T="SeverityLevel" Label="Severity" @bind-Value="_severity" Required="true" Class="mb-4">
+        @foreach (var level in Enum.GetValues<SeverityLevel>())
+        {
+            <MudSelectItem T="SeverityLevel" Value="level">@level.Humanize()</MudSelectItem>
+        }
+    </MudSelect>
+
+    <MudText Typo="Typo.body2" Class="mb-2">What damage do you see? (select all that apply)</MudText>
+    <MudGrid Class="mb-4">
+        @foreach (var sign in Enum.GetValues<DamageSign>())
+        {
+            if (sign == DamageSign.None)
+            {
+                continue;
+            }
+            <MudItem xs="6" sm="4">
+                <MudCheckBox T="bool" Value="@_selectedSigns.Contains(sign)" ValueChanged="@(v => ToggleSign(sign, v))" Label="@sign.Humanize()" />
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="StructureType?" Label="Structure type (optional)" @bind-Value="_structureType" Clearable="true">
+                @foreach (var type in Enum.GetValues<StructureType>())
+                {
+                    <MudSelectItem T="StructureType?" Value="type">@type.Humanize()</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="StructureSize?" Label="Structure size (optional)" @bind-Value="_structureSize" Clearable="true">
+                @foreach (var size in Enum.GetValues<StructureSize>())
+                {
+                    <MudSelectItem T="StructureSize?" Value="size">@size.Humanize()</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Photos / Videos</MudText>
+    <InputFile multiple accept="image/*,video/*" OnChange="OnFilesSelected" />
+    @if (_pendingFiles.Count > 0)
+    {
+        <MudList T="string" Class="mt-2">
+            @foreach (var file in _pendingFiles)
+            {
+                <MudListItem T="string" Icon="@(file.ContentType.StartsWith("video/") ? Icons.Material.Filled.Videocam : Icons.Material.Filled.Image)">
+                    @file.Name (@((file.Size / 1024.0 / 1024.0).ToString("0.0")) MB)
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudPaper>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
+           Disabled="@(_submitting || _locationState != LocationState.Success)"
+           OnClick="SubmitAsync">
+    @if (_submitting)
+    {
+        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+        <span>Submitting...</span>
+    }
+    else
+    {
+        <span>Submit Report</span>
+    }
+</MudButton>
+
+@code {
+    private enum LocationState { Loading, Success, Failed }
+
+    private LocationState _locationState = LocationState.Loading;
+    private string? _locationErrorMessage;
+    private double? _latitude;
+    private double? _longitude;
+    private string? _address;
+
+    private string _description = string.Empty;
+    private SeverityLevel _severity = SeverityLevel.Moderate;
+    private readonly HashSet<DamageSign> _selectedSigns = [];
+    private StructureType? _structureType;
+    private StructureSize? _structureSize;
+
+    private readonly List<IBrowserFile> _pendingFiles = [];
+    private bool _submitting;
+
+    private const long MaxFileSizeBytes = 50 * 1024 * 1024;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // JS interop (geolocation, reverse geocoding) isn't available during
+        // static prerendering - it can only run once the circuit is connected,
+        // i.e. from OnAfterRenderAsync, not OnInitializedAsync.
+        if (firstRender)
+        {
+            await RequestLocationAsync();
+        }
+    }
+
+    private async Task RequestLocationAsync()
+    {
+        _locationState = LocationState.Loading;
+        StateHasChanged();
+
+        var result = await Geolocation.GetCurrentPositionAsync();
+        switch (result)
+        {
+            case GeolocationResult.Success success:
+                _latitude = success.Latitude;
+                _longitude = success.Longitude;
+                _locationState = LocationState.Success;
+                await TryPrefillAddressAsync(success.Latitude, success.Longitude);
+                break;
+            case GeolocationResult.Failure failure:
+                _locationErrorMessage = failure.Reason switch
+                {
+                    GeolocationFailureReason.Denied => "Location access was denied.",
+                    GeolocationFailureReason.Timeout => "Getting your location timed out - if you're on a desktop, check that location/permission prompts aren't being blocked.",
+                    GeolocationFailureReason.Unsupported => "Your browser doesn't support location services.",
+                    _ => "Location is currently unavailable - on Windows, check Settings > Privacy & Security > Location is turned on for your browser.",
+                };
+                _locationState = LocationState.Failed;
+                break;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task TryPrefillAddressAsync(double latitude, double longitude)
+    {
+        var apiKey = Configuration["GOOGLE_MAPS_API_KEY"];
+        if (string.IsNullOrWhiteSpace(apiKey) || !string.IsNullOrWhiteSpace(_address))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/googleMaps.js");
+            _address = await module.InvokeAsync<string?>("reverseGeocode", apiKey, latitude, longitude);
+        }
+        catch
+        {
+            // Best-effort convenience only - not a submission blocker.
+        }
+    }
+
+    private void OnPlaceSelected((string Address, double Latitude, double Longitude) place)
+    {
+        _address = place.Address;
+        _latitude = place.Latitude;
+        _longitude = place.Longitude;
+    }
+
+    private void ToggleSign(DamageSign sign, bool selected)
+    {
+        if (selected)
+        {
+            _selectedSigns.Add(sign);
+        }
+        else
+        {
+            _selectedSigns.Remove(sign);
+        }
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(20))
+        {
+            if (file.Size > MaxFileSizeBytes)
+            {
+                Snackbar.Add($"{file.Name} exceeds the 50 MB limit and was skipped.", Severity.Warning);
+                continue;
+            }
+            _pendingFiles.Add(file);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_description))
+        {
+            Snackbar.Add("Please enter a description.", Severity.Warning);
+            return;
+        }
+        if (_latitude is null || _longitude is null)
+        {
+            Snackbar.Add("Location is required.", Severity.Warning);
+            return;
+        }
+
+        _submitting = true;
+        try
+        {
+            var damageSigns = _selectedSigns.Aggregate(DamageSign.None, (acc, sign) => acc | sign);
+            var request = new CreateDamageReportRequest
+            {
+                Description = _description,
+                Severity = _severity,
+                DamageSigns = damageSigns,
+                StructureType = _structureType,
+                StructureSize = _structureSize,
+                Latitude = _latitude.Value,
+                Longitude = _longitude.Value,
+                Address = _address,
+            };
+
+            var report = await ApiClient.CreateReportAsync(request);
+
+            foreach (var file in _pendingFiles)
+            {
+                var mediaType = file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
+                    ? MediaType.Video
+                    : MediaType.Photo;
+                await using var stream = file.OpenReadStream(MaxFileSizeBytes);
+                await ApiClient.UploadMediaAsync(report.Id, file.Name, file.ContentType, mediaType, stream);
+            }
+
+            Snackbar.Add("Report submitted.", Severity.Success);
+            Navigation.NavigateTo($"/report/{report.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to submit report: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

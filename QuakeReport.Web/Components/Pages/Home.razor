@@ -1,7 +1,82 @@
-﻿@page "/"
+@page "/"
+@inject QuakeReportApiClient ApiClient
 
-<PageTitle>Home</PageTitle>
+<PageTitle>QuakeReport</PageTitle>
 
-<h1>Hello, world!</h1>
+@if (_earthquake is not null)
+{
+    <MudPaper Class="pa-4 mb-6" Elevation="2">
+        <MudText Typo="Typo.h5">@_earthquake.Name</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Magnitude @_earthquake.Magnitude.ToString("0.0") &middot; @_earthquake.OccurredAt.ToLocalTime().ToString("f")
+        </MudText>
+    </MudPaper>
+}
 
-Welcome to your new app.
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h6">Damage Reports</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">
+        Refresh
+    </MudButton>
+</MudStack>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (_reports.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No damage reports yet.</MudAlert>
+}
+else
+{
+    <MudStack Spacing="3">
+        @foreach (var report in _reports)
+        {
+            <MudPaper Class="pa-4" Elevation="1" @onclick="() => NavigateToReport(report.Id)" Style="cursor:pointer">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                    <div>
+                        <MudChip T="string" Color="@DisplayHelpers.SeverityColor(report.Severity)" Size="Size.Small">
+                            @report.Severity.Humanize()
+                        </MudChip>
+                        @if (report.StructureType is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                @report.StructureType.Value.Humanize()@(report.StructureSize is not null ? $" ({report.StructureSize.Value.Humanize()})" : "")
+                            </MudChip>
+                        }
+                        <MudText Typo="Typo.body1" Class="mt-2">@report.Description</MudText>
+                        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mt-2">
+                            @foreach (var sign in report.DamageSigns.Split())
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@sign.Humanize()</MudChip>
+                            }
+                        </MudStack>
+                    </div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@report.CreatedAt.ToLocalTime().ToString("g")</MudText>
+                </MudStack>
+            </MudPaper>
+        }
+    </MudStack>
+}
+
+@code {
+    private IReadOnlyList<DamageReportResponse> _reports = [];
+    private EarthquakeResponse? _earthquake;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _earthquake = await ApiClient.GetActiveEarthquakeAsync();
+        _reports = await ApiClient.GetReportsAsync();
+        _loading = false;
+    }
+
+    private void NavigateToReport(Guid id) => Navigation.NavigateTo($"/report/{id}");
+
+    [Inject]
+    private NavigationManager Navigation { get; set; } = default!;
+}

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.Controllers;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Dtos;
+using QuakeReport.Contracts.Dtos;
 using QuakeReport.Data.Models;
 
 namespace QuakeReport.Tests;

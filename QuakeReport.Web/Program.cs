@@ -1,5 +1,6 @@
-using QuakeReport.Web;
+using MudBlazor.Services;
 using QuakeReport.Web.Components;
+using QuakeReport.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,12 +12,16 @@ builder.AddRedisOutputCache("cache");
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-builder.Services.AddHttpClient<WeatherApiClient>(client =>
+builder.Services.AddMudServices();
+
+builder.Services.AddHttpClient<QuakeReportApiClient>(client =>
     {
         // This URL uses "https+http://" to indicate HTTPS is preferred over HTTP.
         // Learn more about service discovery scheme resolution at https://aka.ms/dotnet/sdschemes.
         client.BaseAddress = new("https+http://apiservice");
     });
+
+builder.Services.AddScoped<GeolocationService>();
 
 var app = builder.Build();
 
