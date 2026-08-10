@@ -2,8 +2,6 @@ using Aspire.Hosting.ApplicationModel;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var cache = builder.AddRedis("cache");
-
 // Persistent: the container survives AppHost stop/restart (across dotnet run
 // and F5 sessions) instead of being torn down and recreated each time, which
 // keeps it paired with its data volume - it just gets reattached, not reinitialized.
@@ -34,8 +32,6 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
 builder.AddProject<Projects.QuakeReport_Web>("webfrontend")
     .WithExternalHttpEndpoints()
     .WithHttpHealthCheck("/health")
-    .WithReference(cache)
-    .WaitFor(cache)
     .WithReference(apiService)
     .WaitFor(apiService);
 

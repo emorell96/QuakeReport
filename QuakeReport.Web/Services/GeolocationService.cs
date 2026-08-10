@@ -33,8 +33,13 @@ public class GeolocationService(IJSRuntime jsRuntime) : IAsyncDisposable
             var position = await module.InvokeAsync<Position>("getCurrentPosition");
             return new GeolocationResult.Success(position.Latitude, position.Longitude);
         }
-        catch (JSException ex)
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
         {
+            // JSException covers rejected JS promises (denied/timeout/unsupported, see
+            // geolocation.js). InvalidOperationException covers JS interop being
+            // structurally unavailable (e.g. no interactive circuit yet); JSDisconnectedException/
+            // TaskCanceledException cover the circuit dropping mid-call. All of these are
+            // "we couldn't get a location" from the caller's point of view, not a crash.
             var reason = ex.Message switch
             {
                 var m when m.Contains("denied", StringComparison.OrdinalIgnoreCase) => GeolocationFailureReason.Denied,

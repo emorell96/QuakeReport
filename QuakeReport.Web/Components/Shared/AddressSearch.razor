@@ -1,23 +1,40 @@
-@using Microsoft.JSInterop
-@inject IJSRuntime JsRuntime
-@inject IConfiguration Configuration
-@implements IAsyncDisposable
+@inject GooglePlacesService GooglePlaces
 
-<div @ref="_wrapperElement">
-    <MudTextField T="string"
-                   Label="Address (optional - search to set the exact location)"
-                   Value="@Address"
-                   ValueChanged="OnAddressTyped"
-                   Adornment="Adornment.Start"
-                   AdornmentIcon="@Icons.Material.Filled.Search"
-                   Placeholder="Search for an address..."
-                   Immediate="true" />
-</div>
+<MudAutocomplete T="GooglePlaceSuggestion"
+                 Label="Dirección (opcional - busca para fijar la ubicación exacta)"
+                 Value="_selectedSuggestion"
+                 ValueChanged="OnSuggestionSelectedAsync"
+                 Text="@Address"
+                 TextChanged="OnAddressTypedAsync"
+                 SearchFunc="SearchAddressesAsync"
+                 ToStringFunc="FormatSuggestion"
+                 MinCharacters="GooglePlacesService.MinimumSearchLength"
+                 DebounceInterval="350"
+                 MaxItems="5"
+                 Strict="false"
+                 CoerceText="true"
+                 CoerceValue="false"
+                 ResetValueOnEmptyText="true"
+                 Clearable="true"
+                 ShowProgressIndicator="true"
+                 Adornment="Adornment.Start"
+                 AdornmentIcon="@Icons.Material.Filled.Search"
+                 Placeholder="Escribe al menos 4 caracteres..."
+                 HelperText="Las sugerencias de Google aparecen después de 4 caracteres">
+    <ItemTemplate Context="suggestion">
+        <MudText Typo="Typo.body2">@suggestion.Description</MudText>
+    </ItemTemplate>
+    <NoItemsTemplate>
+        <MudText Typo="Typo.body2" Class="pa-2">
+            @(string.IsNullOrWhiteSpace(_searchError) ? "No se encontraron direcciones." : _searchError)
+        </MudText>
+    </NoItemsTemplate>
+</MudAutocomplete>
 
 @code {
-    private ElementReference _wrapperElement;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<AddressSearch>? _dotNetRef;
+    private GooglePlaceSuggestion? _selectedSuggestion;
+    private string? _searchError;
+    private string _sessionToken = CreateSessionToken();
 
     [Parameter]
     public string? Address { get; set; }
@@ -25,49 +42,94 @@
     [Parameter]
     public EventCallback<string?> AddressChanged { get; set; }
 
+    [Parameter]
+    public double? Latitude { get; set; }
+
+    [Parameter]
+    public double? Longitude { get; set; }
+
     /// <summary>Fired when a place is picked from the dropdown, with its coordinates.</summary>
     [Parameter]
     public EventCallback<(string Address, double Latitude, double Longitude)> OnPlaceSelected { get; set; }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private async Task<IEnumerable<GooglePlaceSuggestion>> SearchAddressesAsync(
+        string? value,
+        CancellationToken cancellationToken)
     {
-        if (!firstRender)
+        if (string.IsNullOrWhiteSpace(value)
+            || value.Trim().Length < GooglePlacesService.MinimumSearchLength)
         {
-            return;
+            _searchError = null;
+            return [];
         }
 
-        var apiKey = Configuration["GOOGLE_MAPS_API_KEY"];
-        if (string.IsNullOrWhiteSpace(apiKey))
+        try
         {
-            return;
+            _searchError = null;
+            return await GooglePlaces.SearchAsync(
+                value,
+                Latitude,
+                Longitude,
+                _sessionToken,
+                cancellationToken);
         }
-
-        _module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/googleMaps.js");
-        _dotNetRef = DotNetObjectReference.Create(this);
-        await _module.InvokeVoidAsync("attachAutocomplete", apiKey, _wrapperElement, _dotNetRef);
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return [];
+        }
+        catch
+        {
+            _searchError = "La búsqueda de direcciones no está disponible en este momento.";
+            return [];
+        }
     }
 
-    private Task OnAddressTyped(string? value)
+    private async Task OnAddressTypedAsync(string? value)
     {
         Address = value;
-        return AddressChanged.InvokeAsync(value);
-    }
-
-    [JSInvokable]
-    public async Task OnPlaceSelectedFromJs(string formattedAddress, double latitude, double longitude)
-    {
-        Address = formattedAddress;
-        await AddressChanged.InvokeAsync(formattedAddress);
-        await OnPlaceSelected.InvokeAsync((formattedAddress, latitude, longitude));
-        StateHasChanged();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        _dotNetRef?.Dispose();
-        if (_module is not null)
+        if (_selectedSuggestion is not null
+            && !string.Equals(value, _selectedSuggestion.Description, StringComparison.Ordinal))
         {
-            await _module.DisposeAsync();
+            _selectedSuggestion = null;
+        }
+
+        await AddressChanged.InvokeAsync(value);
+    }
+
+    private async Task OnSuggestionSelectedAsync(GooglePlaceSuggestion? suggestion)
+    {
+        _selectedSuggestion = suggestion;
+        if (suggestion is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var details = await GooglePlaces.GetDetailsAsync(
+                suggestion.PlaceId,
+                _sessionToken,
+                CancellationToken.None);
+            _sessionToken = CreateSessionToken();
+
+            if (details is null)
+            {
+                _searchError = "Google no pudo resolver esa dirección.";
+                return;
+            }
+
+            Address = details.FormattedAddress;
+            await AddressChanged.InvokeAsync(Address);
+            await OnPlaceSelected.InvokeAsync((Address, details.Latitude, details.Longitude));
+        }
+        catch
+        {
+            _searchError = "Google no pudo cargar la dirección seleccionada.";
         }
     }
+
+    private static string FormatSuggestion(GooglePlaceSuggestion? suggestion) =>
+        suggestion?.Description ?? string.Empty;
+
+    private static string CreateSessionToken() => Guid.NewGuid().ToString("N");
 }

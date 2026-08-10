@@ -1,7 +1,7 @@
 @page "/report/{Id:guid}"
 @inject QuakeReportApiClient ApiClient
 
-<PageTitle>Report Detail</PageTitle>
+<PageTitle>Detalle del Reporte</PageTitle>
 
 @if (_loading)
 {
@@ -9,16 +9,16 @@
 }
 else if (_report is null)
 {
-    <MudAlert Severity="Severity.Error">Report not found.</MudAlert>
+    <MudAlert Severity="Severity.Error">Reporte no encontrado.</MudAlert>
 }
 else
 {
     <MudStack Row="true" Spacing="2" Class="mb-4">
-        <MudChip T="string" Color="@DisplayHelpers.SeverityColor(_report.Severity)">@_report.Severity.Humanize()</MudChip>
+        <MudChip T="string" Color="@DisplayHelpers.SeverityColor(_report.Severity)">@_report.Severity.ToDisplayString()</MudChip>
         @if (_report.StructureType is not null)
         {
             <MudChip T="string" Variant="Variant.Outlined">
-                @_report.StructureType.Value.Humanize()@(_report.StructureSize is not null ? $" ({_report.StructureSize.Value.Humanize()})" : "")
+                @_report.StructureType.Value.ToDisplayString()@(_report.StructureSize is not null ? $" ({_report.StructureSize.Value.ToDisplayString()})" : "")
             </MudChip>
         }
     </MudStack>
@@ -27,11 +27,11 @@ else
 
     @if (_report.DamageSigns != DamageSign.None)
     {
-        <MudText Typo="Typo.subtitle2" Class="mb-1">Observed damage</MudText>
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Daños observados</MudText>
         <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-4">
             @foreach (var sign in _report.DamageSigns.Split())
             {
-                <MudChip T="string" Size="Size.Small">@sign.Humanize()</MudChip>
+                <MudChip T="string" Size="Size.Small">@sign.ToDisplayString()</MudChip>
             }
         </MudStack>
     }
@@ -42,16 +42,16 @@ else
     }
 
     <MudPaper Class="mb-4" Elevation="1" Style="overflow:hidden">
-        <iframe title="Report location" width="100%" height="300" style="border:0"
+        <iframe title="Ubicación del reporte" width="100%" height="300" style="border:0"
                 src="@DisplayHelpers.GoogleMapsEmbedUrl(_report.Latitude, _report.Longitude)"></iframe>
     </MudPaper>
     <MudLink Href="@DisplayHelpers.GoogleMapsLinkUrl(_report.Latitude, _report.Longitude)" Target="_blank" Class="mb-4 d-block">
-        Open in Google Maps
+        Abrir en Google Maps
     </MudLink>
 
     @if (_report.Media.Count > 0)
     {
-        <MudText Typo="Typo.subtitle1" Class="mb-2">Media</MudText>
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Fotos y Videos</MudText>
         <MudGrid>
             @foreach (var media in _report.Media)
             {
@@ -70,7 +70,7 @@ else
     }
 
     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-4 d-block">
-        Reported @_report.CreatedAt.ToLocalTime().ToString("f")
+        Reportado el @_report.CreatedAt.ToLocalTime().ToString("f")
     </MudText>
 }
 

@@ -1,54 +1,56 @@
 @page "/report/new"
 @inject QuakeReportApiClient ApiClient
 @inject GeolocationService Geolocation
-@inject IJSRuntime JsRuntime
-@inject IConfiguration Configuration
+@inject GooglePlacesService GooglePlaces
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
-<PageTitle>Report Damage</PageTitle>
+<PageTitle>Reportar Daño</PageTitle>
 
-<MudText Typo="Typo.h5" Class="mb-4">Report Damage</MudText>
+<MudText Typo="Typo.h5" Class="mb-4">Reportar Daño</MudText>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Location</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Ubicación</MudText>
 
     @switch (_locationState)
     {
         case LocationState.Loading:
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                 <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
-                <MudText>Getting your location... check for a browser permission prompt (often near the address bar).</MudText>
+                <MudText>Obteniendo tu ubicación... revisa si hay un aviso de permiso del navegador (suele aparecer cerca de la barra de direcciones).</MudText>
             </MudStack>
             break;
         case LocationState.Failed:
             <MudAlert Severity="Severity.Error" Class="mb-2">
-                @_locationErrorMessage Location is required to submit a report.
+                @_locationErrorMessage Se requiere la ubicación para enviar un reporte.
             </MudAlert>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RequestLocationAsync">Retry</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RequestLocationAsync">Reintentar</MudButton>
             break;
         case LocationState.Success:
             <MudAlert Severity="Severity.Success" Class="mb-2">
-                Location captured (@_latitude?.ToString("0.0000"), @_longitude?.ToString("0.0000"))
+                Ubicación capturada (@_latitude?.ToString("0.0000"), @_longitude?.ToString("0.0000"))
             </MudAlert>
             break;
     }
 
-    <AddressSearch @bind-Address="_address" OnPlaceSelected="OnPlaceSelected" />
+    <AddressSearch @bind-Address="_address"
+                   Latitude="_latitude"
+                   Longitude="_longitude"
+                   OnPlaceSelected="OnPlaceSelected" />
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudTextField T="string" Label="Description" @bind-Value="_description" Lines="3" Required="true"
-                   RequiredError="Description is required" Class="mb-4" />
+    <MudTextField T="string" Label="Descripción" @bind-Value="_description" Lines="3" Required="true"
+                   RequiredError="La descripción es obligatoria" Class="mb-4" />
 
-    <MudSelect T="SeverityLevel" Label="Severity" @bind-Value="_severity" Required="true" Class="mb-4">
+    <MudSelect T="SeverityLevel" Label="Gravedad" @bind-Value="_severity" Required="true" Class="mb-4">
         @foreach (var level in Enum.GetValues<SeverityLevel>())
         {
-            <MudSelectItem T="SeverityLevel" Value="level">@level.Humanize()</MudSelectItem>
+            <MudSelectItem T="SeverityLevel" Value="level">@level.ToDisplayString()</MudSelectItem>
         }
     </MudSelect>
 
-    <MudText Typo="Typo.body2" Class="mb-2">What damage do you see? (select all that apply)</MudText>
+    <MudText Typo="Typo.body2" Class="mb-2">¿Qué daños observas? (selecciona todos los que apliquen)</MudText>
     <MudGrid Class="mb-4">
         @foreach (var sign in Enum.GetValues<DamageSign>())
         {
@@ -57,25 +59,25 @@
                 continue;
             }
             <MudItem xs="6" sm="4">
-                <MudCheckBox T="bool" Value="@_selectedSigns.Contains(sign)" ValueChanged="@(v => ToggleSign(sign, v))" Label="@sign.Humanize()" />
+                <MudCheckBox T="bool" Value="@_selectedSigns.Contains(sign)" ValueChanged="@(v => ToggleSign(sign, v))" Label="@sign.ToDisplayString()" />
             </MudItem>
         }
     </MudGrid>
 
     <MudGrid>
         <MudItem xs="12" sm="6">
-            <MudSelect T="StructureType?" Label="Structure type (optional)" @bind-Value="_structureType" Clearable="true">
+            <MudSelect T="StructureType?" Label="Tipo de estructura (opcional)" @bind-Value="_structureType" Clearable="true">
                 @foreach (var type in Enum.GetValues<StructureType>())
                 {
-                    <MudSelectItem T="StructureType?" Value="type">@type.Humanize()</MudSelectItem>
+                    <MudSelectItem T="StructureType?" Value="type">@type.ToDisplayString()</MudSelectItem>
                 }
             </MudSelect>
         </MudItem>
         <MudItem xs="12" sm="6">
-            <MudSelect T="StructureSize?" Label="Structure size (optional)" @bind-Value="_structureSize" Clearable="true">
+            <MudSelect T="StructureSize?" Label="Tamaño de la estructura (opcional)" @bind-Value="_structureSize" Clearable="true">
                 @foreach (var size in Enum.GetValues<StructureSize>())
                 {
-                    <MudSelectItem T="StructureSize?" Value="size">@size.Humanize()</MudSelectItem>
+                    <MudSelectItem T="StructureSize?" Value="size">@size.ToDisplayString()</MudSelectItem>
                 }
             </MudSelect>
         </MudItem>
@@ -83,7 +85,7 @@
 </MudPaper>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Photos / Videos</MudText>
+    <MudText Typo="Typo.subtitle1" Class="mb-2">Fotos y Videos</MudText>
     <InputFile multiple accept="image/*,video/*" OnChange="OnFilesSelected" />
     @if (_pendingFiles.Count > 0)
     {
@@ -104,11 +106,11 @@
     @if (_submitting)
     {
         <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
-        <span>Submitting...</span>
+        <span>Enviando...</span>
     }
     else
     {
-        <span>Submit Report</span>
+        <span>Enviar Reporte</span>
     }
 </MudButton>
 
@@ -160,10 +162,10 @@
             case GeolocationResult.Failure failure:
                 _locationErrorMessage = failure.Reason switch
                 {
-                    GeolocationFailureReason.Denied => "Location access was denied.",
-                    GeolocationFailureReason.Timeout => "Getting your location timed out - if you're on a desktop, check that location/permission prompts aren't being blocked.",
-                    GeolocationFailureReason.Unsupported => "Your browser doesn't support location services.",
-                    _ => "Location is currently unavailable - on Windows, check Settings > Privacy & Security > Location is turned on for your browser.",
+                    GeolocationFailureReason.Denied => "Se denegó el acceso a la ubicación.",
+                    GeolocationFailureReason.Timeout => "Se agotó el tiempo para obtener tu ubicación - si estás en un computador de escritorio, revisa que los avisos de ubicación/permisos no estén bloqueados.",
+                    GeolocationFailureReason.Unsupported => "Tu navegador no admite servicios de ubicación.",
+                    _ => "La ubicación no está disponible en este momento - en Windows, revisa que Configuración > Privacidad y Seguridad > Ubicación esté activada para tu navegador.",
                 };
                 _locationState = LocationState.Failed;
                 break;
@@ -174,16 +176,14 @@
 
     private async Task TryPrefillAddressAsync(double latitude, double longitude)
     {
-        var apiKey = Configuration["GOOGLE_MAPS_API_KEY"];
-        if (string.IsNullOrWhiteSpace(apiKey) || !string.IsNullOrWhiteSpace(_address))
+        if (!string.IsNullOrWhiteSpace(_address))
         {
             return;
         }
 
         try
         {
-            await using var module = await JsRuntime.InvokeAsync<IJSObjectReference>("import", "./js/googleMaps.js");
-            _address = await module.InvokeAsync<string?>("reverseGeocode", apiKey, latitude, longitude);
+            _address = await GooglePlaces.ReverseGeocodeAsync(latitude, longitude);
         }
         catch
         {
@@ -216,7 +216,7 @@
         {
             if (file.Size > MaxFileSizeBytes)
             {
-                Snackbar.Add($"{file.Name} exceeds the 50 MB limit and was skipped.", Severity.Warning);
+                Snackbar.Add($"{file.Name} supera el límite de 50 MB y fue omitido.", Severity.Warning);
                 continue;
             }
             _pendingFiles.Add(file);
@@ -227,12 +227,12 @@
     {
         if (string.IsNullOrWhiteSpace(_description))
         {
-            Snackbar.Add("Please enter a description.", Severity.Warning);
+            Snackbar.Add("Por favor ingresa una descripción.", Severity.Warning);
             return;
         }
         if (_latitude is null || _longitude is null)
         {
-            Snackbar.Add("Location is required.", Severity.Warning);
+            Snackbar.Add("Se requiere la ubicación.", Severity.Warning);
             return;
         }
 
@@ -263,12 +263,12 @@
                 await ApiClient.UploadMediaAsync(report.Id, file.Name, file.ContentType, mediaType, stream);
             }
 
-            Snackbar.Add("Report submitted.", Severity.Success);
+            Snackbar.Add("Reporte enviado.", Severity.Success);
             Navigation.NavigateTo($"/report/{report.Id}");
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to submit report: {ex.Message}", Severity.Error);
+            Snackbar.Add($"No se pudo enviar el reporte: {ex.Message}", Severity.Error);
         }
         finally
         {

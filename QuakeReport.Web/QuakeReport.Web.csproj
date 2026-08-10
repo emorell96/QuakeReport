@@ -13,7 +13,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aspire.StackExchange.Redis.OutputCaching" Version="13.4.6" />
+    <PackageReference Include="Humanizer.Core" Version="3.0.10" />
     <PackageReference Include="MudBlazor" Version="9.8.0" />
   </ItemGroup>
 
