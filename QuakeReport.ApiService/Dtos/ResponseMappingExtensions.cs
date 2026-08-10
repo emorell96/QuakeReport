@@ -25,6 +25,19 @@ public static class ResponseMappingExtensions
         report.CreatedAt,
         report.Media.Select(m => m.ToResponse()).ToList());
 
+    public static DamageReportSummaryResponse ToSummaryResponse(this DamageReport report) => new(
+        report.Id,
+        report.EarthquakeId,
+        report.Description,
+        report.Severity,
+        report.DamageSigns,
+        report.StructureType,
+        report.StructureSize,
+        report.Latitude,
+        report.Longitude,
+        report.Address,
+        report.CreatedAt);
+
     public static EarthquakeResponse ToResponse(this Earthquake earthquake) => new(
         earthquake.Id,
         earthquake.Name,

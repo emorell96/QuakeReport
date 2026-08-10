@@ -1,7 +1,8 @@
 @page "/"
 @inject QuakeReportApiClient ApiClient
+@implements IDisposable
 
-<PageTitle>QuakeReport</PageTitle>
+<PageTitle>Terremoto.com.co</PageTitle>
 
 @if (_earthquake is not null)
 {
@@ -20,13 +21,39 @@
     </MudButton>
 </MudStack>
 
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6">
+            <MudSelect T="SeverityLevel?" Label="Filtrar por gravedad" Value="_severityFilter" ValueChanged="OnSeverityChangedAsync" Clearable="true">
+                <MudSelectItem T="SeverityLevel?" Value="@((SeverityLevel?)null)">Todas las gravedades</MudSelectItem>
+                @foreach (var severity in Enum.GetValues<SeverityLevel>().OrderByDescending(value => value))
+                {
+                    <MudSelectItem T="SeverityLevel?" Value="severity">@severity.ToDisplayString()</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="ReportSortOption" Label="Ordenar por" Value="_sortOption" ValueChanged="OnSortChangedAsync">
+                <MudSelectItem Value="ReportSortOption.Newest">Más recientes</MudSelectItem>
+                <MudSelectItem Value="ReportSortOption.Oldest">Más antiguos</MudSelectItem>
+                <MudSelectItem Value="ReportSortOption.HighestSeverity">Mayor gravedad</MudSelectItem>
+                <MudSelectItem Value="ReportSortOption.LowestSeverity">Menor gravedad</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
 @if (_loading)
 {
     <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
 }
-else if (_reports.Count == 0)
+else if (_totalCount == 0 && _severityFilter is null)
 {
     <MudAlert Severity="Severity.Info">Aún no hay reportes de daños.</MudAlert>
+}
+else if (_totalCount == 0)
+{
+    <MudAlert Severity="Severity.Info">No hay reportes que coincidan con el filtro seleccionado.</MudAlert>
 }
 else
 {
@@ -58,25 +85,100 @@ else
             </MudPaper>
         }
     </MudStack>
+
+    @if (_totalPages > 1)
+    {
+        <MudStack AlignItems="AlignItems.Center" Class="mt-6">
+            <MudPagination Count="_totalPages" Selected="_page" SelectedChanged="OnPageChangedAsync" />
+        </MudStack>
+    }
 }
 
 @code {
-    private IReadOnlyList<DamageReportResponse> _reports = [];
+    private const int PageSize = 20;
+
+    private IReadOnlyList<DamageReportSummaryResponse> _reports = [];
     private EarthquakeResponse? _earthquake;
     private bool _loading = true;
+    private SeverityLevel? _severityFilter;
+    private ReportSortOption _sortOption = ReportSortOption.Newest;
+    private int _page = 1;
+    private int _totalCount;
+    private int _totalPages;
+    private CancellationTokenSource? _loadCancellation;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
     private async Task LoadAsync()
     {
+        var cancellation = new CancellationTokenSource();
+        var previousCancellation = Interlocked.Exchange(ref _loadCancellation, cancellation);
+        previousCancellation?.Cancel();
+        previousCancellation?.Dispose();
+
         _loading = true;
-        _earthquake = await ApiClient.GetActiveEarthquakeAsync();
-        _reports = await ApiClient.GetReportsAsync();
-        _loading = false;
+        try
+        {
+            var earthquakeTask = ApiClient.GetActiveEarthquakeAsync(cancellation.Token);
+            var reportsTask = ApiClient.GetReportsAsync(
+                _page,
+                PageSize,
+                _severityFilter,
+                _sortOption,
+                cancellation.Token);
+
+            await Task.WhenAll(earthquakeTask, reportsTask);
+            if (!ReferenceEquals(_loadCancellation, cancellation))
+            {
+                return;
+            }
+
+            _earthquake = await earthquakeTask;
+            var response = await reportsTask;
+            _reports = response.Items;
+            _totalCount = response.TotalCount;
+            _totalPages = response.TotalPages;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_loadCancellation, cancellation))
+            {
+                _loading = false;
+            }
+        }
+    }
+
+    private async Task OnSeverityChangedAsync(SeverityLevel? severity)
+    {
+        _severityFilter = severity;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnSortChangedAsync(ReportSortOption sort)
+    {
+        _sortOption = sort;
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnPageChangedAsync(int page)
+    {
+        _page = page;
+        await LoadAsync();
     }
 
     private void NavigateToReport(Guid id) => Navigation.NavigateTo($"/report/{id}");
 
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;
+
+    public void Dispose()
+    {
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+    }
 }

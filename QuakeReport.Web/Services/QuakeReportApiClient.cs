@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.WebUtilities;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 
@@ -19,11 +20,28 @@ public class QuakeReportApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<EarthquakeResponse>(cancellationToken);
     }
 
-    /// <summary>Worst-to-least impact, per the API's default ordering.</summary>
-    public async Task<IReadOnlyList<DamageReportResponse>> GetReportsAsync(CancellationToken cancellationToken = default)
+    public async Task<PagedResponse<DamageReportSummaryResponse>> GetReportsAsync(
+        int page = 1,
+        int pageSize = 20,
+        SeverityLevel? severity = null,
+        ReportSortOption sort = ReportSortOption.Newest,
+        CancellationToken cancellationToken = default)
     {
-        var reports = await httpClient.GetFromJsonAsync<List<DamageReportResponse>>("/api/reports", cancellationToken);
-        return reports ?? [];
+        var query = new Dictionary<string, string?>
+        {
+            [nameof(page)] = page.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [nameof(pageSize)] = pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [nameof(sort)] = sort.ToString(),
+        };
+
+        if (severity.HasValue)
+        {
+            query[nameof(severity)] = severity.Value.ToString();
+        }
+
+        var uri = QueryHelpers.AddQueryString("/api/reports", query);
+        return await httpClient.GetFromJsonAsync<PagedResponse<DamageReportSummaryResponse>>(uri, cancellationToken)
+            ?? new PagedResponse<DamageReportSummaryResponse>([], page, pageSize, 0, 0);
     }
 
     public async Task<DamageReportResponse?> GetReportAsync(Guid id, CancellationToken cancellationToken = default)
