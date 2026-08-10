@@ -94,20 +94,26 @@ az containerapp list --resource-group $resourceGroup --output table
 Invoke-WebRequest "https://<web-frontend-fqdn>/health"
 ```
 
-### Connect terremoto.com.co
+### Connect terremoto.com.co through Cloudflare
+
+The AppHost declaratively registers `terremoto.com.co` and
+`www.terremoto.com.co` on the frontend and binds the uploaded
+`terremoto-cloudflare` Origin CA certificate. Do not add these hostnames only
+through the Azure portal: an Aspire deployment reconciles the Container App to
+the AppHost model and removes out-of-band hostname changes.
 
 Get the Container Apps environment static IP, frontend FQDN, and domain
-verification value from the Azure portal or Azure CLI. At the DNS provider add:
+verification value from Azure. In Cloudflare DNS add:
 
-- `A @` to the Container Apps environment static IP.
+- Proxied `A @` to the Container Apps environment static IP.
 - `TXT asuid` with the frontend's domain-verification value.
-- `CNAME www` directly to the generated frontend FQDN.
+- Proxied `CNAME www` directly to the generated frontend FQDN.
 - `TXT asuid.www` with the same verification value.
 
-In the frontend Container App, add `terremoto.com.co` and
-`www.terremoto.com.co` under **Networking > Custom domains**, choosing an Azure
-managed certificate for each. The application permanently redirects `www` to
-the apex domain while preserving paths and query strings.
+Set Cloudflare SSL/TLS encryption mode to **Full (strict)**. The application
+permanently redirects `www` to the apex domain while preserving paths and query
+strings. If the Container Apps environment or uploaded certificate is replaced,
+update the `cloudflare-certificate-id` default in the AppHost before deploying.
 
 ### Rollback
 
