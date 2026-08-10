@@ -83,6 +83,40 @@ public class DtoAndDataTests
     }
 
     [TestMethod]
+    public void DamageReportSummaryResponseMapsReportFieldsWithoutMedia()
+    {
+        var report = new DamageReport
+        {
+            Id = Guid.NewGuid(),
+            EarthquakeId = Guid.NewGuid(),
+            Description = "Cracked building",
+            Severity = SeverityLevel.Severe,
+            DamageSigns = DamageSign.Cracks,
+            StructureType = StructureType.Commercial,
+            StructureSize = StructureSize.Medium,
+            Latitude = 4.5,
+            Longitude = -74.3,
+            Address = "Main Street",
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        var result = report.ToSummaryResponse();
+
+        Assert.AreEqual(report.Id, result.Id);
+        Assert.AreEqual(report.EarthquakeId, result.EarthquakeId);
+        Assert.AreEqual(report.Description, result.Description);
+        Assert.AreEqual(report.Severity, result.Severity);
+        Assert.AreEqual(report.DamageSigns, result.DamageSigns);
+        Assert.AreEqual(report.StructureType, result.StructureType);
+        Assert.AreEqual(report.StructureSize, result.StructureSize);
+        Assert.AreEqual(report.Latitude, result.Latitude);
+        Assert.AreEqual(report.Longitude, result.Longitude);
+        Assert.AreEqual(report.Address, result.Address);
+        Assert.AreEqual(report.CreatedAt, result.CreatedAt);
+        Assert.IsNull(result.GetType().GetProperty("Media"));
+    }
+
+    [TestMethod]
     public void DamageReportModelConfiguresNullableStructureFieldsAndRelationships()
     {
         using var db = TestDb.Create();
@@ -93,6 +127,15 @@ public class DtoAndDataTests
         Assert.IsTrue(entity.FindProperty(nameof(DamageReport.StructureSize))!.IsNullable);
         Assert.IsNotNull(entity.FindNavigation(nameof(DamageReport.Media)));
         Assert.IsTrue(entity.GetForeignKeys().Any(fk => fk.Properties.Any(property => property.Name == nameof(DamageReport.EarthquakeId))));
+        Assert.IsTrue(entity.GetIndexes().Any(index =>
+            index.Properties.Select(property => property.Name).SequenceEqual([
+                nameof(DamageReport.CreatedAt),
+                nameof(DamageReport.Id)])));
+        Assert.IsTrue(entity.GetIndexes().Any(index =>
+            index.Properties.Select(property => property.Name).SequenceEqual([
+                nameof(DamageReport.Severity),
+                nameof(DamageReport.CreatedAt),
+                nameof(DamageReport.Id)])));
 
         var seeded = db.Earthquakes.Single(e => e.Id == QuakeReport.Data.QuakeReportDbContext.ColombiaEarthquakeId);
         Assert.IsTrue(seeded.IsActive);

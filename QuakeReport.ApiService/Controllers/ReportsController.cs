@@ -4,6 +4,7 @@ using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
 using QuakeReport.Contracts.Dtos;
+using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 
@@ -17,19 +18,87 @@ public class ReportsController(
     IMediaStorage mediaStorage) : ControllerBase
 {
     private const long MaxMediaSizeBytes = 50 * 1024 * 1024; // 50 MB
+    private const int DefaultPageSize = 20;
+    private const int MaxPageSize = 100;
 
-    /// <summary>Worst-impact-first, newest-first within the same severity.</summary>
+    /// <summary>Returns a filtered, sorted page of report summaries.</summary>
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<DamageReportResponse>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetAll(CancellationToken cancellationToken)
+    [ProducesResponseType<PagedResponse<DamageReportSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> GetAll(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] SeverityLevel? severity = null,
+        [FromQuery] ReportSortOption sort = ReportSortOption.Newest,
+        CancellationToken cancellationToken = default)
     {
-        var reports = await dbContext.DamageReports
-            .Include(r => r.Media)
-            .OrderByDescending(r => r.Severity)
-            .ThenByDescending(r => r.CreatedAt)
+        if (page < 1)
+        {
+            ModelState.AddModelError(nameof(page), "Page must be at least 1.");
+        }
+
+        if (pageSize is < 1 or > MaxPageSize)
+        {
+            ModelState.AddModelError(nameof(pageSize), $"Page size must be between 1 and {MaxPageSize}.");
+        }
+
+        if (severity.HasValue && !Enum.IsDefined(severity.Value))
+        {
+            ModelState.AddModelError(nameof(severity), "Severity is invalid.");
+        }
+
+        if (!Enum.IsDefined(sort))
+        {
+            ModelState.AddModelError(nameof(sort), "Sort option is invalid.");
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return BadRequest(new ValidationProblemDetails(ModelState)
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "One or more report query parameters are invalid.",
+            });
+        }
+
+        var query = dbContext.DamageReports.AsNoTracking();
+        if (severity.HasValue)
+        {
+            query = query.Where(report => report.Severity == severity.Value);
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var orderedQuery = sort switch
+        {
+            ReportSortOption.Oldest => query
+                .OrderBy(report => report.CreatedAt)
+                .ThenBy(report => report.Id),
+            ReportSortOption.HighestSeverity => query
+                .OrderByDescending(report => report.Severity)
+                .ThenByDescending(report => report.CreatedAt)
+                .ThenByDescending(report => report.Id),
+            ReportSortOption.LowestSeverity => query
+                .OrderBy(report => report.Severity)
+                .ThenByDescending(report => report.CreatedAt)
+                .ThenByDescending(report => report.Id),
+            _ => query
+                .OrderByDescending(report => report.CreatedAt)
+                .ThenByDescending(report => report.Id),
+        };
+
+        var reports = await orderedQuery
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
 
-        return Ok(reports.Select(r => r.ToResponse()));
+        var response = new PagedResponse<DamageReportSummaryResponse>(
+            reports.Select(report => report.ToSummaryResponse()).ToList(),
+            page,
+            pageSize,
+            totalCount,
+            (int)Math.Ceiling(totalCount / (double)pageSize));
+
+        return Ok(response);
     }
 
     [HttpGet("{id:guid}")]

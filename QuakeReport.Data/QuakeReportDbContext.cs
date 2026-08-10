@@ -42,7 +42,8 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
         {
             entity.Property(e => e.Description).HasMaxLength(2000);
             entity.Property(e => e.Address).HasMaxLength(300);
-            entity.HasIndex(e => e.Severity);
+            entity.HasIndex(e => new { e.CreatedAt, e.Id });
+            entity.HasIndex(e => new { e.Severity, e.CreatedAt, e.Id });
             entity.HasIndex(e => e.EarthquakeId);
 
             entity.HasOne(e => e.Earthquake)

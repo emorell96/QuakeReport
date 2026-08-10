@@ -10,6 +10,15 @@
     z-index: 1000;
 }
 
+.brand-link {
+    color: inherit;
+    text-decoration: none;
+}
+
+.brand-link:visited {
+    color: inherit;
+}
+
     #blazor-error-ui .dismiss {
         cursor: pointer;
         position: absolute;
