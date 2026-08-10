@@ -11,9 +11,11 @@
   <ItemGroup>
     <ProjectReference Include="..\QuakeReport.ApiService\QuakeReport.ApiService.csproj" />
     <ProjectReference Include="..\QuakeReport.Web\QuakeReport.Web.csproj" />
+    <ProjectReference Include="..\QuakeReport.MigrationService\QuakeReport.MigrationService.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.PostgreSQL" Version="13.4.6" />
     <PackageReference Include="Aspire.Hosting.Redis" Version="13.4.6" />
   </ItemGroup>
 

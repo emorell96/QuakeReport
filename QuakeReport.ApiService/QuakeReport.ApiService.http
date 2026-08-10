@@ -1,6 +1,6 @@
-@ApiService_HostAddress = http://localhost:5499
+@QuakeReport.ApiService_HostAddress = http://localhost:5172
 
-GET {{ApiService_HostAddress}}/weatherforecast/
+GET {{QuakeReport.ApiService_HostAddress}}/weatherforecast/
 Accept: application/json
 
 ###

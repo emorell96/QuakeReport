@@ -2,6 +2,7 @@
   <Project Path="QuakeReport.ApiService/QuakeReport.ApiService.csproj" />
   <Project Path="QuakeReport.AppHost/QuakeReport.AppHost.csproj" />
   <Project Path="QuakeReport.Data/QuakeReport.Data.csproj" />
+  <Project Path="QuakeReport.MigrationService/QuakeReport.MigrationService.csproj" />
   <Project Path="QuakeReport.ServiceDefaults/QuakeReport.ServiceDefaults.csproj" />
   <Project Path="QuakeReport.Tests/QuakeReport.Tests.csproj" />
   <Project Path="QuakeReport.Web/QuakeReport.Web.csproj" />
