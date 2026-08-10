@@ -1,0 +1,84 @@
+@page "/missing-people/{Id:guid}"
+@inject QuakeReportApiClient ApiClient
+@inject IConfiguration Configuration
+
+<PageTitle>@(_person?.FullName ?? "Persona extraviada") - Terremoto.com.co</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_person is null)
+{
+    <MudAlert Severity="Severity.Error">No se encontró esta persona.</MudAlert>
+}
+else
+{
+    <MudButton Href="/missing-people" StartIcon="@Icons.Material.Filled.ArrowBack">Volver</MudButton>
+    <MudPaper Class="pa-4 mt-4">
+        @if (!string.IsNullOrWhiteSpace(_person.PhotoUrl)) { <MudImage Src="@_person.PhotoUrl" Alt="@_person.FullName" Width="320" Class="mb-3" /> }
+        <MudText Typo="Typo.h4">@_person.FullName</MudText>
+        <MudChip T="string" Color="@(_person.Status == MissingPersonStatus.Found ? Color.Success : Color.Warning)">@_person.Status</MudChip>
+        @if (_person.IdentificationDocumentType is not null && _person.IdentificationLastFour is not null) { <MudText>Documento terminado en @_person.IdentificationLastFour</MudText> }
+        @if (_person.ApproximateAge is not null) { <MudText>Edad aproximada: @_person.ApproximateAge</MudText> }
+        <MudText Class="mt-3">@_person.Description</MudText>
+        @if (_person.PhysicalDescription is not null) { <MudText Class="mt-2"><strong>Descripción física:</strong> @_person.PhysicalDescription</MudText> }
+        @if (_person.ClothingDescription is not null) { <MudText><strong>Ropa y detalles:</strong> @_person.ClothingDescription</MudText> }
+        <MudText Class="mt-2">Último avistamiento: @_person.LastSeenAt.ToLocalTime().ToString("f")</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4">Posibles ubicaciones</MudText>
+        @foreach (var location in _person.Locations)
+        {
+            <MudText>@location.Address @if (location.Note is not null) { <span>— @location.Note</span> }</MudText>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">¿Tienes información?</MudText>
+        <MudTextField Label="Información del avistamiento*" Lines="4" @bind-Value="_message" />
+        <MudTextField Label="Dirección del avistamiento" @bind-Value="_address" />
+        <MudDatePicker Label="Fecha del avistamiento" @bind-Date="_sightedDate" />
+        <MudTextField Label="Tu nombre (opcional)" @bind-Value="_responderName" />
+        <MudTextField Label="Teléfono privado (opcional)" @bind-Value="_responderPhone" />
+        <MudTextField Label="Correo privado (opcional)" @bind-Value="_responderEmail" />
+        <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstileToken" />
+        <MudButton Class="mt-3" Variant="Variant.Filled" OnClick="SubmitTipAsync">Enviar información</MudButton>
+        @if (_tipMessage is not null) { <MudAlert Severity="@(_tipSent ? Severity.Success : Severity.Error)" Class="mt-3">@_tipMessage</MudAlert> }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Informaciones recibidas</MudText>
+        @if (_tips.Items.Count == 0)
+        {
+            <MudText>No hay informaciones públicas todavía.</MudText>
+        }
+        else
+        {
+            @foreach (var tip in _tips.Items)
+            {
+                <MudPaper Class="pa-3 mt-2" Outlined="true">
+                    <MudText>@tip.Message</MudText>
+                    @if (!string.IsNullOrWhiteSpace(tip.Address)) { <MudText Typo="Typo.body2">Lugar: @tip.Address</MudText> }
+                    @if (tip.SightedAt is not null) { <MudText Typo="Typo.body2">Avistamiento: @tip.SightedAt.Value.ToLocalTime().ToString("g")</MudText> }
+                </MudPaper>
+            }
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private MissingPersonResponse? _person; private PagedResponse<MissingPersonTipResponse> _tips = new([], 1, 20, 0, 0); private bool _loading = true, _tipSent;
+    private string? _message, _address, _responderName, _responderPhone, _responderEmail, _turnstileToken, _tipMessage;
+    private DateTime? _sightedDate = DateTime.Today;
+    protected override async Task OnParametersSetAsync() { _loading = true; _person = await ApiClient.GetMissingPersonAsync(Id); if (_person is not null) _tips = await ApiClient.GetMissingPersonTipsAsync(Id); _loading = false; }
+    private async Task SubmitTipAsync()
+    {
+        try
+        {
+            await ApiClient.CreateMissingPersonTipAsync(Id, new(_message ?? "", ToUtcOffset(_sightedDate), _address, null, null, _responderName, _responderPhone, _responderEmail, _turnstileToken ?? ""));
+            _tipSent = true; _tipMessage = "Gracias. La información fue enviada."; _message = null;
+        }
+        catch (Exception exception) { _tipSent = false; _tipMessage = exception.Message; }
+    }
+    private static DateTimeOffset ToUtcOffset(DateTime? value) => new(DateTime.SpecifyKind(value ?? DateTime.Today, DateTimeKind.Unspecified), TimeSpan.Zero);
+}

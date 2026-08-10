@@ -1,0 +1,116 @@
+@page "/missing-people/{Id:guid}/manage"
+@page "/missing-people/manage"
+@inject QuakeReportApiClient ApiClient
+
+<PageTitle>Administrar persona extraviada - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5">Administrar registro</MudText>
+<MudText Class="mb-4">Ingresa el código de administración que recibiste al publicar el caso.</MudText>
+
+<MudPaper Class="pa-4" MaxWidth="MaxWidth.Medium">
+    @if (Id == Guid.Empty)
+    {
+        <MudTextField Label="Identificador del registro" @bind-Value="_idText" HelperText="Usa el identificador mostrado después de publicar el registro." />
+    }
+    <MudTextField Label="Código de administración" @bind-Value="_code" InputType="InputType.Password" />
+    <MudButton Class="mt-3" Variant="Variant.Filled" OnClick="LoadAsync" Disabled="_loading">Cargar</MudButton>
+    @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert> }
+</MudPaper>
+
+@if (_person is not null)
+{
+    <MudPaper Class="pa-4 mt-4" MaxWidth="MaxWidth.Medium">
+        <MudText Typo="Typo.h6">@_person.FullName</MudText>
+        <MudSelect T="MissingPersonStatus" Label="Estado" @bind-Value="_status">
+            <MudSelectItem Value="MissingPersonStatus.Missing">Extraviada</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Found">Encontrada</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Closed">Cerrada</MudSelectItem>
+        </MudSelect>
+        <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="SaveStatusAsync">Guardar estado</MudButton>
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mt-4" MaxWidth="MaxWidth.Medium">
+        <MudText Typo="Typo.h6">Informaciones privadas</MudText>
+        @if (_tips.Count == 0) { <MudText>No hay respuestas todavía.</MudText> }
+        @foreach (var tip in _tips)
+        {
+            <MudPaper Class="pa-3 mt-2" Outlined="true">
+                <MudText>@tip.Message</MudText>
+                <MudText Typo="Typo.body2">Contacto: @tip.ResponderName @tip.ResponderPhone @tip.ResponderEmail</MudText>
+                @if (!tip.IsHidden) { <MudButton Size="Size.Small" OnClick="@(() => HideTipAsync(tip.Id))">Ocultar</MudButton> }
+                else { <MudChip T="string" Size="Size.Small">Oculta</MudChip> }
+            </MudPaper>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mt-4" MaxWidth="MaxWidth.Medium">
+        <MudText Typo="Typo.h6">Fotografía</MudText>
+        @if (!string.IsNullOrWhiteSpace(_person.PhotoUrl))
+        {
+            <MudImage Src="@_person.PhotoUrl" Alt="@_person.FullName" Width="240" Class="mb-3" />
+        }
+        <InputFile OnChange="UploadPhotoAsync" accept="image/jpeg,image/png,image/webp" />
+        <MudText Typo="Typo.caption">JPEG, PNG o WebP. Tamaño máximo: 10 MB.</MudText>
+        @if (_photoMessage is not null) { <MudAlert Severity="@(_photoUploaded ? Severity.Success : Severity.Error)" Class="mt-2">@_photoMessage</MudAlert> }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private string? _code, _error, _photoMessage, _idText;
+    private MissingPersonResponse? _person;
+    private IReadOnlyList<PrivateMissingPersonTipResponse> _tips = [];
+    private MissingPersonStatus _status;
+    private bool _loading, _photoUploaded;
+
+    private async Task LoadAsync()
+    {
+        _error = null; _loading = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_code)) throw new InvalidOperationException("Ingresa el código de administración.");
+            if (Id == Guid.Empty)
+            {
+                if (!Guid.TryParse(_idText, out var parsedId)) throw new InvalidOperationException("Ingresa un identificador válido.");
+                Id = parsedId;
+            }
+            _person = await ApiClient.GetMissingPersonAsync(Id);
+            if (_person is null) throw new InvalidOperationException("No se encontró este registro.");
+            _status = _person.Status;
+            _tips = await ApiClient.GetPrivateMissingPersonTipsAsync(Id, _code);
+        }
+        catch (Exception exception) { _error = exception.Message; _person = null; }
+        finally { _loading = false; }
+    }
+
+    private async Task SaveStatusAsync()
+    {
+        try { _person = await ApiClient.UpdateMissingPersonStatusAsync(Id, _code!, _status); }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+
+    private async Task HideTipAsync(Guid tipId)
+    {
+        try { await ApiClient.HideMissingPersonTipAsync(Id, tipId, _code!); _tips = await ApiClient.GetPrivateMissingPersonTipsAsync(Id, _code!); }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+
+    private async Task UploadPhotoAsync(InputFileChangeEventArgs args)
+    {
+        _photoMessage = null; _photoUploaded = false;
+        var file = args.File;
+        if (file is null) return;
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            _photoMessage = "La fotografía no puede superar 10 MB.";
+            return;
+        }
+
+        try
+        {
+            var url = await ApiClient.UploadMissingPersonPhotoAsync(Id, _code!, file);
+            if (_person is not null) _person = _person with { PhotoUrl = url };
+            _photoUploaded = true; _photoMessage = "Fotografía cargada correctamente.";
+        }
+        catch (Exception exception) { _photoMessage = exception.Message; }
+    }
+}

@@ -145,3 +145,20 @@ az containerapp ingress traffic set --resource-group $resourceGroup `
 Fix the application or add a corrective EF migration, then run `aspire deploy`
 again. Do not use `aspire destroy` as a rollback mechanism because it deletes
 the deployment resource group.
+
+### Missing-person registry configuration
+
+The Phase 2 registry requires three deployment parameters. Set them as Aspire
+secrets before deployment; never commit their values:
+
+```powershell
+aspire param set missing-person-id-hmac-key "<long-random-secret>" --environment Production
+aspire param set turnstile-secret-key "<cloudflare-turnstile-secret>" --environment Production
+aspire param set turnstile-site-key "<cloudflare-turnstile-site-key>" --environment Production
+```
+
+Configure the Turnstile site for `terremoto.com.co` and
+`www.terremoto.com.co`. The API stores only HMAC document identifiers and
+hashed recovery codes. Run the migration job after deployment before using
+the registry. The recovery code is shown once after publication and must not
+be placed in a URL.

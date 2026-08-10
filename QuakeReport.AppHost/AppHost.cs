@@ -19,6 +19,17 @@ builder.AddAzureContainerAppEnvironment("quake-report-env")
     .AsExisting(existingEnvironmentName, existingEnvironmentResourceGroup);
 
 var googleMapsApiKey = builder.AddParameter("google-maps-api-key", secret: true);
+var missingPersonIdHmacKey = builder.AddParameter(
+    "missing-person-id-hmac-key",
+    "development-only-missing-person-id-hmac-key",
+    secret: true,
+    publishValueAsDefault: false);
+var turnstileSiteKey = builder.AddParameter("turnstile-site-key", "1x00000000000000000000AA", publishValueAsDefault: true);
+var turnstileSecretKey = builder.AddParameter(
+    "turnstile-secret-key",
+    "1x0000000000000000000000000000000AA",
+    secret: true,
+    publishValueAsDefault: false);
 var apexDomain = builder.AddParameter(
     "apex-domain",
     "terremoto.com.co",
@@ -79,6 +90,7 @@ var storage = builder.AddAzureStorage("storage")
         account.AllowBlobPublicAccess = true;
     });
 var reportMediaBlobs = storage.AddBlobs("blobs");
+var missingPersonBlobs = storage.AddBlobs("missing-person-media");
 
 var migrationService = builder.AddProject<Projects.QuakeReport_MigrationService>("migrationservice")
     .WithReference(quakeReportDb)
@@ -91,7 +103,10 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
     .WaitFor(quakeReportDb)
     .WaitForCompletion(migrationService)
     .WithReference(reportMediaBlobs)
+    .WithReference(missingPersonBlobs)
     .WaitFor(reportMediaBlobs)
+    .WithEnvironment("MissingPeople__IdHmacKey", missingPersonIdHmacKey)
+    .WithEnvironment("Turnstile__SecretKey", turnstileSecretKey)
     .PublishAsAzureContainerApp((_, app) =>
     {
         app.Template.Scale.MinReplicas = 0;
@@ -110,6 +125,7 @@ var webFrontend = builder.AddProject<Projects.QuakeReport_Web>("webfrontend")
     .WaitFor(apiService)
     .WithAzureUserAssignedIdentity(webFrontendIdentity)
     .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
+    .WithEnvironment("Turnstile__SiteKey", turnstileSiteKey)
     .PublishAsAzureContainerApp((infrastructure, app) =>
     {
         app.Template.Scale.MinReplicas = 1;
