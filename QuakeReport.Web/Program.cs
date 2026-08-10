@@ -22,12 +22,19 @@ builder.Services.AddRazorComponents()
 builder.Services.AddMudServices();
 builder.Services.AddOutputCache();
 
+#pragma warning disable EXTEXP0001 // RemoveAllResilienceHandlers is the documented per-client override.
 builder.Services.AddHttpClient<QuakeReportApiClient>(client =>
     {
         // This URL uses "https+http://" to indicate HTTPS is preferred over HTTP.
         // Learn more about service discovery scheme resolution at https://aka.ms/dotnet/sdschemes.
         client.BaseAddress = new("https+http://apiservice");
-    });
+        client.Timeout = TimeSpan.FromMinutes(15);
+    })
+    // BrowserFileStream is forward-only. The default resilience handler times
+    // out each attempt after ten seconds and then retries the consumed stream.
+    // Uploads and report-creation POSTs must be sent exactly once.
+    .RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
 
 builder.Services.AddHttpClient<GooglePlacesService>(client =>
 {
