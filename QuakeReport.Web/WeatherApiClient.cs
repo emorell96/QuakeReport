@@ -4,6 +4,11 @@ public class WeatherApiClient(HttpClient httpClient)
 {
     public async Task<WeatherForecast[]> GetWeatherAsync(int maxItems = 10, CancellationToken cancellationToken = default)
     {
+        if (maxItems <= 0)
+        {
+            return [];
+        }
+
         List<WeatherForecast>? forecasts = null;
 
         await foreach (var forecast in httpClient.GetFromJsonAsAsyncEnumerable<WeatherForecast>("/weatherforecast", cancellationToken))
