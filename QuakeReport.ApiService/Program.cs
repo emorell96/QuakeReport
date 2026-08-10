@@ -1,4 +1,7 @@
+using QuakeReport.ApiService.Earthquakes;
+using QuakeReport.ApiService.Media;
 using QuakeReport.Data;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,16 +14,20 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.AddNpgsqlDbContext<QuakeReportDbContext>("quakereportdb");
+builder.AddAzureBlobServiceClient("blobs");
+
+builder.Services.AddScoped<ActiveEarthquakeService>();
+builder.Services.AddScoped<IMediaStorage, AzureBlobMediaStorage>();
 
 var app = builder.Build();
 
 app.MapDefaultEndpoints();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
+// Exposed in every environment (including production) so every endpoint is
+// always discoverable at /scalar - there's no auth on this API yet either,
+// so this isn't leaking anything a client couldn't already infer from calling it.
+app.MapOpenApi();
+app.MapScalarApiReference();
 
 app.UseHttpsRedirection();
 

@@ -12,24 +12,6 @@ namespace QuakeReport.Data.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "DamageReports",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
-                    Severity = table.Column<int>(type: "integer", nullable: false),
-                    DamageSigns = table.Column<int>(type: "integer", nullable: false),
-                    Latitude = table.Column<double>(type: "double precision", nullable: false),
-                    Longitude = table.Column<double>(type: "double precision", nullable: false),
-                    Address = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: true),
-                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_DamageReports", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "Earthquakes",
                 columns: table => new
                 {
@@ -40,11 +22,39 @@ namespace QuakeReport.Data.Migrations
                     EpicenterLatitude = table.Column<double>(type: "double precision", nullable: false),
                     EpicenterLongitude = table.Column<double>(type: "double precision", nullable: false),
                     Source = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Earthquakes", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "DamageReports",
+                columns: table => new
+                {
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    EarthquakeId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    Severity = table.Column<int>(type: "integer", nullable: false),
+                    DamageSigns = table.Column<int>(type: "integer", nullable: false),
+                    StructureType = table.Column<int>(type: "integer", nullable: true),
+                    StructureSize = table.Column<int>(type: "integer", nullable: true),
+                    Latitude = table.Column<double>(type: "double precision", nullable: false),
+                    Longitude = table.Column<double>(type: "double precision", nullable: false),
+                    Address = table.Column<string>(type: "character varying(300)", maxLength: 300, nullable: true),
+                    CreatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DamageReports", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_DamageReports_Earthquakes_EarthquakeId",
+                        column: x => x.EarthquakeId,
+                        principalTable: "Earthquakes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
                 });
 
             migrationBuilder.CreateTable(
@@ -73,8 +83,13 @@ namespace QuakeReport.Data.Migrations
 
             migrationBuilder.InsertData(
                 table: "Earthquakes",
-                columns: new[] { "Id", "CreatedAt", "EpicenterLatitude", "EpicenterLongitude", "Magnitude", "Name", "OccurredAt", "Source" },
-                values: new object[] { new Guid("11111111-1111-1111-1111-111111111111"), new DateTimeOffset(new DateTime(2026, 8, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 4.5709, -74.297300000000007, 7.4000000000000004, "M7.4 - Colombia", new DateTimeOffset(new DateTime(2026, 8, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null });
+                columns: new[] { "Id", "CreatedAt", "EpicenterLatitude", "EpicenterLongitude", "IsActive", "Magnitude", "Name", "OccurredAt", "Source" },
+                values: new object[] { new Guid("11111111-1111-1111-1111-111111111111"), new DateTimeOffset(new DateTime(2026, 8, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), 4.5709, -74.297300000000007, true, 7.4000000000000004, "M7.4 - Colombia", new DateTimeOffset(new DateTime(2026, 8, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)), null });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DamageReports_EarthquakeId",
+                table: "DamageReports",
+                column: "EarthquakeId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_DamageReports_Severity",
@@ -91,13 +106,13 @@ namespace QuakeReport.Data.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "Earthquakes");
-
-            migrationBuilder.DropTable(
                 name: "ReportMedia");
 
             migrationBuilder.DropTable(
                 name: "DamageReports");
+
+            migrationBuilder.DropTable(
+                name: "Earthquakes");
         }
     }
 }

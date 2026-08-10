@@ -33,6 +33,7 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
                 EpicenterLatitude = 4.5709,
                 EpicenterLongitude = -74.2973,
                 Source = null,
+                IsActive = true,
                 CreatedAt = new DateTimeOffset(2026, 8, 10, 0, 0, 0, TimeSpan.Zero)
             });
         });
@@ -42,6 +43,12 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
             entity.Property(e => e.Description).HasMaxLength(2000);
             entity.Property(e => e.Address).HasMaxLength(300);
             entity.HasIndex(e => e.Severity);
+            entity.HasIndex(e => e.EarthquakeId);
+
+            entity.HasOne(e => e.Earthquake)
+                .WithMany()
+                .HasForeignKey(e => e.EarthquakeId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             entity.HasMany(e => e.Media)
                 .WithOne(m => m.DamageReport)

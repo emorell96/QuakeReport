@@ -12,7 +12,7 @@ using QuakeReport.Data;
 namespace QuakeReport.Data.Migrations
 {
     [DbContext(typeof(QuakeReportDbContext))]
-    [Migration("20260810152332_InitialCreate")]
+    [Migration("20260810154605_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -46,6 +46,9 @@ namespace QuakeReport.Data.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<Guid>("EarthquakeId")
+                        .HasColumnType("uuid");
+
                     b.Property<double>("Latitude")
                         .HasColumnType("double precision");
 
@@ -55,7 +58,15 @@ namespace QuakeReport.Data.Migrations
                     b.Property<int>("Severity")
                         .HasColumnType("integer");
 
+                    b.Property<int?>("StructureSize")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("StructureType")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("EarthquakeId");
 
                     b.HasIndex("Severity");
 
@@ -76,6 +87,9 @@ namespace QuakeReport.Data.Migrations
 
                     b.Property<double>("EpicenterLongitude")
                         .HasColumnType("double precision");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
 
                     b.Property<double>("Magnitude")
                         .HasColumnType("double precision");
@@ -103,6 +117,7 @@ namespace QuakeReport.Data.Migrations
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 8, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
                             EpicenterLatitude = 4.5709,
                             EpicenterLongitude = -74.297300000000007,
+                            IsActive = true,
                             Magnitude = 7.4000000000000004,
                             Name = "M7.4 - Colombia",
                             OccurredAt = new DateTimeOffset(new DateTime(2026, 8, 10, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0))
@@ -147,6 +162,17 @@ namespace QuakeReport.Data.Migrations
                     b.HasIndex("DamageReportId");
 
                     b.ToTable("ReportMedia");
+                });
+
+            modelBuilder.Entity("QuakeReport.Data.Models.DamageReport", b =>
+                {
+                    b.HasOne("QuakeReport.Data.Models.Earthquake", "Earthquake")
+                        .WithMany()
+                        .HasForeignKey("EarthquakeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Earthquake");
                 });
 
             modelBuilder.Entity("QuakeReport.Data.Models.ReportMedia", b =>

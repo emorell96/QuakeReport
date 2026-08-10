@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 namespace QuakeReport.Tests;
 
 [TestClass]
+[TestCategory("Integration")]
 public class WebTests
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
