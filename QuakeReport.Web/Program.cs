@@ -1,4 +1,6 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using MudBlazor.Services;
 using QuakeReport.Web.Components;
 using QuakeReport.Web.Infrastructure;
@@ -18,9 +20,30 @@ builder.AddServiceDefaults();
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddMudServices();
 builder.Services.AddOutputCache();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        var teamDomain = builder.Configuration["CloudflareAccess:TeamDomain"] ?? string.Empty;
+        options.Authority = $"https://{teamDomain}";
+        options.Audience = builder.Configuration["CloudflareAccess:Audience"];
+        options.RequireHttpsMetadata = true;
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var token = context.Request.Headers["Cf-Access-Jwt-Assertion"].FirstOrDefault();
+                if (string.IsNullOrWhiteSpace(token) && context.Request.Cookies.TryGetValue("CF_Authorization", out var cookie)) token = cookie;
+                context.Token = token;
+                return Task.CompletedTask;
+            },
+        };
+    });
+var moderatorPolicy = builder.Services.AddAuthorizationBuilder().AddPolicy("Moderators", policy =>
+    policy.RequireAssertion(context => builder.Environment.IsDevelopment() || context.User.Identity?.IsAuthenticated == true));
 
 #pragma warning disable EXTEXP0001 // RemoveAllResilienceHandlers is the documented per-client override.
 builder.Services.AddHttpClient<QuakeReportApiClient>(client =>
@@ -55,6 +78,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseAntiforgery();
 

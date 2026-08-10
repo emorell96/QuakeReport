@@ -45,6 +45,24 @@ else
 }
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h6">Centros de acopio</MudText>
+    <MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton>
+</MudStack>
+@if (_collectionPoints.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-6">No hay centros de acopio abiertos publicados.</MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-6">
+        @foreach (var point in _collectionPoints)
+        {
+            <MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@point.Name</MudText><MudText>@point.Address</MudText><MudText Typo="Typo.body2"><strong>Necesidades:</strong> @point.NeedsSummary</MudText><MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton></MudCardContent></MudCard></MudItem>
+        }
+    </MudGrid>
+}
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h6">Reportes de Daños</MudText>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">
         Actualizar
@@ -128,6 +146,7 @@ else
     private const int PageSize = 20;
 
     private IReadOnlyList<DamageReportSummaryResponse> _reports = [];
+    private IReadOnlyList<CollectionPointSummaryResponse> _collectionPoints = [];
     private IReadOnlyList<MissingPersonSummaryResponse> _missingPeople = [];
     private EarthquakeResponse? _earthquake;
     private bool _loading = true;
@@ -158,8 +177,9 @@ else
                 _sortOption,
                 cancellation.Token);
             var missingPeopleTask = ApiClient.GetMissingPeopleAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
+            var collectionPointsTask = ApiClient.GetCollectionPointsAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
 
-            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask);
+            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, collectionPointsTask);
             if (!ReferenceEquals(_loadCancellation, cancellation))
             {
                 return;
@@ -171,6 +191,7 @@ else
             _totalCount = response.TotalCount;
             _totalPages = response.TotalPages;
             _missingPeople = (await missingPeopleTask).Items;
+            _collectionPoints = (await collectionPointsTask).Items;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {

@@ -155,6 +155,9 @@ secrets before deployment; never commit their values:
 aspire param set missing-person-id-hmac-key "<long-random-secret>" --environment Production
 aspire param set turnstile-secret-key "<cloudflare-turnstile-secret>" --environment Production
 aspire param set turnstile-site-key "<cloudflare-turnstile-site-key>" --environment Production
+aspire param set moderation-api-key "<long-random-internal-key>" --environment Production
+aspire param set cloudflare-access-team-domain "<team-name>.cloudflareaccess.com" --environment Production
+aspire param set cloudflare-access-audience "<cloudflare-access-audience>" --environment Production
 ```
 
 Configure the Turnstile site for `terremoto.com.co` and
@@ -162,3 +165,22 @@ Configure the Turnstile site for `terremoto.com.co` and
 hashed recovery codes. Run the migration job after deployment before using
 the registry. The recovery code is shown once after publication and must not
 be placed in a URL.
+
+### Collection-point registry and moderation
+
+The collection-point registry uses the active earthquake and the same migration
+job as the rest of the application. Community submissions are visible as
+**No verificado** until approved; official entries are created as **Oficial**.
+The management code is returned only once and is never stored in plain text.
+
+Protect `/acopios/admin*` in Cloudflare Access for both
+`terremoto.com.co` and `www.terremoto.com.co`. Configure approved moderator
+email addresses and one-time PIN authentication. Production validates the
+Cloudflare Access JWT issuer, audience, signature, and expiry, and fails closed
+when the team domain or audience is missing. The Web app forwards only the
+internal moderation credential to the internal API.
+
+After deploying the migration, start the migration Container App Job and verify
+it succeeds before publishing the collection-point URL. Public users can
+submit a point, comments, and abuse reports with Turnstile; moderators review
+pending entries at `/acopios/admin`.

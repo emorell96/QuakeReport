@@ -1,0 +1,41 @@
+@page "/collection-points/{Id:guid}"
+@inject QuakeReportApiClient ApiClient
+@inject IConfiguration Configuration
+
+<PageTitle>@(_point?.Name ?? "Centro de acopio") - Terremoto.com.co</PageTitle>
+@if (_point is null) { <MudAlert Severity="Severity.Error">No se encontró este centro de acopio.</MudAlert> }
+else
+{
+    <MudButton Href="/collection-points" StartIcon="@Icons.Material.Filled.ArrowBack">Volver</MudButton>
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h4">@_point.Name</MudText>
+        <MudText>@_point.Address</MudText>
+        <MudButton Href="@_point.GoogleMapsUrl" Target="_blank" Class="mt-2" Variant="Variant.Outlined">Abrir en Google Maps</MudButton>
+        @if (_point.ModerationStatus == CollectionPointModerationStatus.Pending) { <MudAlert Severity="Severity.Warning" Class="mt-3">Este centro aún no ha sido verificado.</MudAlert> }
+        <MudText Typo="Typo.h6" Class="mt-4">Necesidades actuales</MudText><MudText>@_point.NeedsSummary</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4">Recepción y horarios</MudText><MudText>@_point.ReceivingInstructions</MudText>
+        @if (_point.Description is not null) { <MudText Class="mt-3">@_point.Description</MudText> }
+        @if (_point.ContactName is not null || _point.ContactPhone is not null || _point.ContactWhatsApp is not null || _point.ContactEmail is not null)
+        { <MudText Class="mt-3">Contacto: @_point.ContactName @_point.ContactPhone @_point.ContactWhatsApp @_point.ContactEmail</MudText> }
+        @if (_point.IsExpired) { <MudAlert Severity="Severity.Warning" Class="mt-3">La fecha indicada ya pasó; confirma antes de ir.</MudAlert> }
+    </MudPaper>
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Comentarios y actualizaciones</MudText>
+        @foreach (var comment in _point.Comments) { <MudPaper Class="pa-2 mt-2" Outlined="true"><MudText>@comment.Message</MudText><MudText Typo="Typo.caption">@(comment.DisplayName ?? "Anónimo") · @comment.CreatedAt.ToLocalTime().ToString("g")</MudText></MudPaper> }
+        <MudTextField Class="mt-3" Label="Comentario" Lines="3" @bind-Value="_message" />
+        <MudTextField Label="Nombre opcional" @bind-Value="_displayName" />
+        <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile" />
+        <MudButton Class="mt-2" Variant="Variant.Filled" OnClick="CommentAsync">Publicar comentario</MudButton>
+        @if (_messageStatus is not null) { <MudAlert Severity="@(_commentSent ? Severity.Success : Severity.Error)" Class="mt-2">@_messageStatus</MudAlert> }
+    </MudPaper>
+}
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private CollectionPointResponse? _point; private string? _message, _displayName, _turnstile, _messageStatus; private bool _commentSent;
+    protected override async Task OnParametersSetAsync() => _point = await ApiClient.GetCollectionPointAsync(Id);
+    private async Task CommentAsync()
+    {
+        try { await ApiClient.CreateCollectionPointCommentAsync(Id, new(_displayName, _message ?? "", _turnstile ?? "")); _commentSent = true; _messageStatus = "Comentario publicado."; _message = null; _point = await ApiClient.GetCollectionPointAsync(Id); }
+        catch (Exception exception) { _commentSent = false; _messageStatus = exception.Message; }
+    }
+}

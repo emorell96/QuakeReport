@@ -1,0 +1,103 @@
+@page "/collection-points/manage"
+@page "/collection-points/{Id:guid}/manage"
+@inject QuakeReportApiClient ApiClient
+
+<PageTitle>Administrar centro de acopio - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5">Administrar centro de acopio</MudText>
+<MudText Class="mb-4">Ingresa el código de administración recibido al registrarlo.</MudText>
+<MudPaper Class="pa-4">
+    <MudTextField Label="Código de administración" InputType="InputType.Password" @bind-Value="_code" />
+    <MudButton Class="mt-2" OnClick="LoadAsync">Cargar registro</MudButton>
+    @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert> }
+</MudPaper>
+
+@if (_point is not null)
+{
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Editar información</MudText>
+        <MudTextField Label="Nombre" @bind-Value="_name" Required="true" />
+        <MudTextField Label="Organización" @bind-Value="_organization" />
+        <MudTextField Label="Dirección" @bind-Value="_address" Required="true" />
+        <MudTextField Label="Necesidades actuales" Lines="3" @bind-Value="_needs" Required="true" />
+        <MudTextField Label="Instrucciones de recepción" Lines="3" @bind-Value="_instructions" Required="true" />
+        <MudTextField Label="Descripción" Lines="3" @bind-Value="_description" />
+        <MudTextField Label="Nombre de contacto" @bind-Value="_contactName" />
+        <MudTextField Label="Teléfono" @bind-Value="_phone" />
+        <MudTextField Label="WhatsApp" @bind-Value="_whatsapp" />
+        <MudTextField Label="Correo" @bind-Value="_email" />
+        <MudDatePicker Label="Fecha de cierre prevista (opcional)" @bind-Date="_endsAt" />
+        <MudButton Class="mt-3" Variant="Variant.Filled" OnClick="SaveAsync">Guardar cambios</MudButton>
+        <MudText Typo="Typo.body2" Class="mt-3">Moderación: @_point.ModerationStatus</MudText>
+    </MudPaper>
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Estado operativo</MudText>
+        <MudSelect T="CollectionPointOperationalStatus" Label="Estado" @bind-Value="_status">
+            <MudSelectItem Value="CollectionPointOperationalStatus.Open">Abierto</MudSelectItem>
+            <MudSelectItem Value="CollectionPointOperationalStatus.Full">Capacidad llena</MudSelectItem>
+            <MudSelectItem Value="CollectionPointOperationalStatus.Closed">Cerrado</MudSelectItem>
+        </MudSelect>
+        <MudButton Class="mt-2" OnClick="SaveStatusAsync">Guardar estado</MudButton>
+        <MudText Typo="Typo.h6" Class="mt-4">Comentarios</MudText>
+        @foreach (var comment in _point.Comments)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-2">
+                <MudText>@comment.Message</MudText>
+                <MudButton Size="Size.Small" Color="Color.Error" OnClick="() => HideCommentAsync(comment.Id)">Ocultar</MudButton>
+            </MudStack>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private string? _code, _error, _name, _organization, _address, _needs, _instructions, _description, _contactName, _phone, _whatsapp, _email;
+    private DateTime? _endsAt;
+    private CollectionPointResponse? _point;
+    private CollectionPointOperationalStatus _status;
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _error = null;
+            if (string.IsNullOrWhiteSpace(_code)) throw new InvalidOperationException("El código es obligatorio.");
+            _point = await ApiClient.LookupCollectionPointByManagementCodeAsync(_code);
+            if (_point is null) throw new InvalidOperationException("No se encontró el centro o el código no es válido.");
+            Id = _point.Id;
+            CopyFromPoint();
+        }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+
+    private void CopyFromPoint()
+    {
+        if (_point is null) return;
+        _name = _point.Name; _organization = _point.OrganizationName; _address = _point.Address;
+        _needs = _point.NeedsSummary; _instructions = _point.ReceivingInstructions; _description = _point.Description;
+        _contactName = _point.ContactName; _phone = _point.ContactPhone; _whatsapp = _point.ContactWhatsApp; _email = _point.ContactEmail;
+        _endsAt = _point.EndsAt?.LocalDateTime; _status = _point.OperationalStatus;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            _error = null;
+            _point = await ApiClient.UpdateCollectionPointAsync(Id, _code!, new(_name ?? "", _organization, _address ?? "", _point?.Latitude, _point?.Longitude, _description, _needs ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email, _endsAt is null ? null : new DateTimeOffset(_endsAt.Value, TimeZoneInfo.Local.GetUtcOffset(_endsAt.Value)).ToUniversalTime()));
+            CopyFromPoint();
+        }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+
+    private async Task SaveStatusAsync()
+    {
+        try { _point = await ApiClient.UpdateCollectionPointStatusAsync(Id, _code!, _status); }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+
+    private async Task HideCommentAsync(Guid commentId)
+    {
+        try { await ApiClient.HideCollectionPointCommentAsync(Id, commentId, _code!); _point = await ApiClient.LookupCollectionPointByManagementCodeAsync(_code!); }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+}
