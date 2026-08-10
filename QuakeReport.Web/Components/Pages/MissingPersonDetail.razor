@@ -21,7 +21,7 @@ else
     <MudPaper Class="pa-4 mt-4">
         @if (!string.IsNullOrWhiteSpace(_person.PhotoUrl)) { <MudImage Src="@_person.PhotoUrl" Alt="@_person.FullName" Width="320" Class="mb-3" /> }
         <MudText Typo="Typo.h4">@_person.FullName</MudText>
-        <MudChip T="string" Color="@(_person.Status == MissingPersonStatus.Found ? Color.Success : Color.Warning)">@_person.Status</MudChip>
+        <MudChip T="string" Color="@(_person.Status == MissingPersonStatus.Found || _person.Status == MissingPersonStatus.Rescued ? Color.Success : _person.Status == MissingPersonStatus.Deceased ? Color.Error : Color.Warning)">@GetStatusLabel(_person.Status)</MudChip>
         @if (_person.IdentificationDocumentType is not null && _person.IdentificationLastFour is not null) { <MudText>Documento terminado en @_person.IdentificationLastFour</MudText> }
         @if (_person.ApproximateAge is not null) { <MudText>Edad aproximada: @_person.ApproximateAge</MudText> }
         <MudText Class="mt-3">@_person.Description</MudText>
@@ -73,6 +73,15 @@ else
     private MissingPersonResponse? _person; private PagedResponse<MissingPersonTipResponse> _tips = new([], 1, 20, 0, 0); private bool _loading = true, _tipSent;
     private string? _message, _address, _responderName, _responderPhone, _responderEmail, _turnstileToken, _tipMessage;
     private DateTime? _sightedDate = DateTime.Today;
+    private static string GetStatusLabel(MissingPersonStatus status) => status switch
+    {
+        MissingPersonStatus.Missing => "Extraviada",
+        MissingPersonStatus.Found => "Encontrada",
+        MissingPersonStatus.Deceased => "Fallecida",
+        MissingPersonStatus.Rescued => "Rescatada",
+        MissingPersonStatus.Closed => "Cerrada",
+        _ => status.ToString(),
+    };
     protected override async Task OnParametersSetAsync() { _loading = true; _person = await ApiClient.GetMissingPersonAsync(Id); if (_person is not null) _tips = await ApiClient.GetMissingPersonTipsAsync(Id); _loading = false; }
     private async Task SubmitTipAsync()
     {

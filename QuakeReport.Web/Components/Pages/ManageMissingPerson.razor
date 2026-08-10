@@ -19,6 +19,8 @@
         <MudSelect T="MissingPersonStatus" Label="Estado" @bind-Value="_status">
             <MudSelectItem Value="MissingPersonStatus.Missing">Extraviada</MudSelectItem>
             <MudSelectItem Value="MissingPersonStatus.Found">Encontrada</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Deceased">Fallecida</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Rescued">Rescatada</MudSelectItem>
             <MudSelectItem Value="MissingPersonStatus.Closed">Cerrada</MudSelectItem>
         </MudSelect>
         <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="SaveStatusAsync">Guardar estado</MudButton>

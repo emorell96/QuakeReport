@@ -16,6 +16,8 @@
         <MudSelect T="MissingPersonStatus" Label="Estado" Value="_status" ValueChanged="OnStatusChangedAsync">
             <MudSelectItem Value="MissingPersonStatus.Missing">Extraviadas</MudSelectItem>
             <MudSelectItem Value="MissingPersonStatus.Found">Encontradas</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Deceased">Fallecidas</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Rescued">Rescatadas</MudSelectItem>
         </MudSelect>
         <MudSelect T="MissingPersonSortOption" Label="Ordenar" Value="_sort" ValueChanged="OnSortChangedAsync">
             <MudSelectItem Value="MissingPersonSortOption.Newest">Más recientes</MudSelectItem>
@@ -61,7 +63,7 @@ else
                     @if (!string.IsNullOrWhiteSpace(person.PhotoUrl)) { <MudCardMedia Image="@person.PhotoUrl" Height="220" /> }
                     <MudCardContent>
                         <MudText Typo="Typo.h6">@person.FullName</MudText>
-                        <MudChip T="string" Size="Size.Small" Color="@(person.Status == MissingPersonStatus.Found ? Color.Success : Color.Warning)">@person.Status.ToString()</MudChip>
+                        <MudChip T="string" Size="Size.Small" Color="@(person.Status == MissingPersonStatus.Found || person.Status == MissingPersonStatus.Rescued ? Color.Success : person.Status == MissingPersonStatus.Deceased ? Color.Error : Color.Warning)">@GetStatusLabel(person.Status)</MudChip>
                         @if (person.IdentificationDocumentType is not null && person.IdentificationLastFour is not null) { <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText> }
                         <MudText Typo="Typo.body2" Class="mt-2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
                         <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
@@ -109,5 +111,14 @@ else
         else Navigation.NavigateTo($"/missing-people/{result.Id}");
     }
     private void OpenPerson(Guid id) => Navigation.NavigateTo($"/missing-people/{id}");
+    private static string GetStatusLabel(MissingPersonStatus status) => status switch
+    {
+        MissingPersonStatus.Missing => "Extraviada",
+        MissingPersonStatus.Found => "Encontrada",
+        MissingPersonStatus.Deceased => "Fallecida",
+        MissingPersonStatus.Rescued => "Rescatada",
+        MissingPersonStatus.Closed => "Cerrada",
+        _ => status.ToString(),
+    };
     [Inject] private NavigationManager Navigation { get; set; } = default!;
 }
