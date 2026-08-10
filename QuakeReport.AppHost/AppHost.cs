@@ -24,11 +24,27 @@ var missingPersonIdHmacKey = builder.AddParameter(
     "development-only-missing-person-id-hmac-key",
     secret: true,
     publishValueAsDefault: false);
-var turnstileSiteKey = builder.AddParameter("turnstile-site-key", "1x00000000000000000000AA", publishValueAsDefault: true);
+var turnstileSiteKey = builder.AddParameter(
+    "turnstile-site-key",
+    "1x00000000000000000000AA",
+    publishValueAsDefault: false);
 var turnstileSecretKey = builder.AddParameter(
     "turnstile-secret-key",
     "1x0000000000000000000000000000000AA",
     secret: true,
+    publishValueAsDefault: false);
+var moderationApiKey = builder.AddParameter(
+    "moderation-api-key",
+    "development-only-moderation-api-key",
+    secret: true,
+    publishValueAsDefault: false);
+var cloudflareAccessTeamDomain = builder.AddParameter(
+    "cloudflare-access-team-domain",
+    "development.cloudflareaccess.com",
+    publishValueAsDefault: false);
+var cloudflareAccessAudience = builder.AddParameter(
+    "cloudflare-access-audience",
+    "development-audience",
     publishValueAsDefault: false);
 var apexDomain = builder.AddParameter(
     "apex-domain",
@@ -107,6 +123,7 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
     .WaitFor(reportMediaBlobs)
     .WithEnvironment("MissingPeople__IdHmacKey", missingPersonIdHmacKey)
     .WithEnvironment("Turnstile__SecretKey", turnstileSecretKey)
+    .WithEnvironment("Moderation__ApiKey", moderationApiKey)
     .PublishAsAzureContainerApp((_, app) =>
     {
         app.Template.Scale.MinReplicas = 0;
@@ -126,6 +143,9 @@ var webFrontend = builder.AddProject<Projects.QuakeReport_Web>("webfrontend")
     .WithAzureUserAssignedIdentity(webFrontendIdentity)
     .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
     .WithEnvironment("Turnstile__SiteKey", turnstileSiteKey)
+    .WithEnvironment("Moderation__ApiKey", moderationApiKey)
+    .WithEnvironment("CloudflareAccess__TeamDomain", cloudflareAccessTeamDomain)
+    .WithEnvironment("CloudflareAccess__Audience", cloudflareAccessAudience)
     .PublishAsAzureContainerApp((infrastructure, app) =>
     {
         app.Template.Scale.MinReplicas = 1;

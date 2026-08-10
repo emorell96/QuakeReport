@@ -65,4 +65,27 @@ public static class ResponseMappingExtensions
     public static PrivateMissingPersonTipResponse ToPrivateResponse(this MissingPersonTip tip) => new(
         tip.Id, tip.Message, tip.SightedAt, tip.Address, tip.Latitude, tip.Longitude,
         tip.ResponderName, tip.ResponderPhone, tip.ResponderEmail, tip.CreatedAt, tip.IsHidden);
+
+    public static CollectionPointSummaryResponse ToSummaryResponse(this CollectionPoint point) => new(
+        point.Id, point.Name, point.OrganizationName, point.Address, point.NeedsSummary,
+        point.ModerationStatus, point.OperationalStatus, point.Source, point.EndsAt, point.UpdatedAt,
+        point.GoogleMapsUrl(), point.EndsAt is not null && point.EndsAt < DateTimeOffset.UtcNow);
+
+    public static CollectionPointResponse ToResponse(this CollectionPoint point, IReadOnlyList<CollectionPointCommentResponse>? comments = null) => new(
+        point.Id, point.EarthquakeId, point.Name, point.OrganizationName, point.Address, point.Latitude, point.Longitude,
+        point.Description, point.NeedsSummary, point.ReceivingInstructions, point.ContactName, point.ContactPhone,
+        point.ContactWhatsApp, point.ContactEmail, point.EndsAt, point.ModerationStatus, point.OperationalStatus,
+        point.Source, point.CreatedAt, point.UpdatedAt, point.GoogleMapsUrl(),
+        point.EndsAt is not null && point.EndsAt < DateTimeOffset.UtcNow, comments ?? []);
+
+    public static CollectionPointCommentResponse ToResponse(this CollectionPointComment comment) =>
+        new(comment.Id, comment.DisplayName, comment.Message, comment.CreatedAt);
+
+    public static PrivateCollectionPointCommentResponse ToPrivateResponse(this CollectionPointComment comment) =>
+        new(comment.Id, comment.DisplayName, comment.Message, comment.CreatedAt, comment.IsHidden);
+
+    public static string GoogleMapsUrl(this CollectionPoint point) =>
+        point.Latitude.HasValue && point.Longitude.HasValue
+            ? $"https://www.google.com/maps/search/?api=1&query={point.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{point.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(point.Address)}";
 }

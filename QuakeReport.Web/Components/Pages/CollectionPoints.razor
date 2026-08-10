@@ -1,0 +1,73 @@
+@page "/collection-points"
+@inject QuakeReportApiClient ApiClient
+
+<PageTitle>Centros de acopio - Terremoto.com.co</PageTitle>
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Centros de acopio</MudText>
+    <MudButton Href="/collection-points/new" Variant="Variant.Filled" Color="Color.Primary">Registrar centro</MudButton>
+</MudStack>
+<MudPaper Class="pa-4 mb-4">
+    <MudTextField Label="Buscar por nombre, dirección o necesidad" @bind-Value="_query" />
+    <MudStack Row="true" Spacing="2" Class="mt-2">
+        <MudSelect T="CollectionPointOperationalStatus?" Label="Estado" @bind-Value="_status" Clearable="true">
+            <MudSelectItem T="CollectionPointOperationalStatus?" Value="@((CollectionPointOperationalStatus?)null)">Abiertos y llenos</MudSelectItem>
+            <MudSelectItem T="CollectionPointOperationalStatus?" Value="@((CollectionPointOperationalStatus?)CollectionPointOperationalStatus.Open)">Abiertos</MudSelectItem>
+            <MudSelectItem T="CollectionPointOperationalStatus?" Value="@((CollectionPointOperationalStatus?)CollectionPointOperationalStatus.Full)">Capacidad llena</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="CollectionPointModerationStatus?" Label="Verificación" @bind-Value="_moderationStatus" Clearable="true">
+            <MudSelectItem T="CollectionPointModerationStatus?" Value="@((CollectionPointModerationStatus?)null)">Todos</MudSelectItem>
+            <MudSelectItem T="CollectionPointModerationStatus?" Value="@((CollectionPointModerationStatus?)CollectionPointModerationStatus.Pending)">No verificados</MudSelectItem>
+            <MudSelectItem T="CollectionPointModerationStatus?" Value="@((CollectionPointModerationStatus?)CollectionPointModerationStatus.Approved)">Verificados</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="CollectionPointSortOption" Label="Ordenar" @bind-Value="_sort">
+            <MudSelectItem Value="CollectionPointSortOption.Newest">Más recientes</MudSelectItem>
+            <MudSelectItem Value="CollectionPointSortOption.RecentlyUpdated">Actualizados recientemente</MudSelectItem>
+            <MudSelectItem Value="CollectionPointSortOption.Name">Nombre</MudSelectItem>
+        </MudSelect>
+        <MudButton OnClick="SearchAsync">Buscar</MudButton>
+    </MudStack>
+</MudPaper>
+@if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay centros de acopio para mostrar.</MudAlert> }
+else
+{
+    <MudGrid>
+        @foreach (var point in _items)
+        {
+            <MudItem xs="12" sm="6">
+                <MudCard Class="h-100">
+                    <MudCardContent>
+                        <MudStack Row="true" Spacing="1">
+                            <MudText Typo="Typo.h6">@point.Name</MudText>
+                            @if (point.ModerationStatus == CollectionPointModerationStatus.Pending) { <MudChip T="string" Size="Size.Small" Color="Color.Warning">No verificado</MudChip> }
+                            else if (point.Source == CollectionPointSource.Official) { <MudChip T="string" Size="Size.Small" Color="Color.Info">Oficial</MudChip> }
+                            else { <MudChip T="string" Size="Size.Small" Color="Color.Success">Verificado</MudChip> }
+                        </MudStack>
+                        <MudChip T="string" Size="Size.Small" Color="@(point.OperationalStatus == CollectionPointOperationalStatus.Full ? Color.Warning : Color.Success)">@GetStatus(point.OperationalStatus)</MudChip>
+                        <MudText Class="mt-2">@point.Address</MudText>
+                        <MudText Typo="Typo.body2"><strong>Necesidades:</strong> @point.NeedsSummary</MudText>
+                        @if (point.IsExpired) { <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">La fecha indicada ya pasó; confirma antes de ir.</MudAlert> }
+                        <MudStack Row="true" Spacing="1" Class="mt-2">
+                            <MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small">Ver detalles</MudButton>
+                            <MudButton Href="@point.GoogleMapsUrl" Target="_blank" Size="Size.Small">Google Maps</MudButton>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+    @if (_totalPages > 1) { <MudPagination Class="mt-6" Count="_totalPages" Selected="_page" SelectedChanged="PageChangedAsync" /> }
+}
+@code {
+    private IReadOnlyList<CollectionPointSummaryResponse> _items = [];
+    private string? _query; private CollectionPointOperationalStatus? _status; private CollectionPointModerationStatus? _moderationStatus; private CollectionPointSortOption _sort = CollectionPointSortOption.Newest; private int _page = 1, _totalPages; private CancellationTokenSource? _cts;
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task SearchAsync() { _page = 1; await LoadAsync(); }
+    private async Task PageChangedAsync(int page) { _page = page; await LoadAsync(); }
+    private async Task LoadAsync()
+    {
+        var cts = new CancellationTokenSource(); var previous = Interlocked.Exchange(ref _cts, cts); previous?.Cancel(); previous?.Dispose();
+        try { var response = await ApiClient.GetCollectionPointsAsync(_query, _status, _moderationStatus, _sort, _page, 20, cts.Token); if (ReferenceEquals(_cts, cts)) { _items = response.Items; _totalPages = response.TotalPages; } }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
+    }
+    private static string GetStatus(CollectionPointOperationalStatus status) => status switch { CollectionPointOperationalStatus.Open => "Abierto", CollectionPointOperationalStatus.Full => "Capacidad llena", CollectionPointOperationalStatus.Closed => "Cerrado", _ => status.ToString() };
+}

@@ -13,9 +13,9 @@ builder.AddServiceDefaults();
 builder.Services.AddControllers();
 builder.Services.AddRateLimiter(options =>
 {
-    options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(_ =>
+    options.GlobalLimiter = System.Threading.RateLimiting.PartitionedRateLimiter.Create<HttpContext, string>(context =>
         System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
-            "global",
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
             {
                 PermitLimit = 120,

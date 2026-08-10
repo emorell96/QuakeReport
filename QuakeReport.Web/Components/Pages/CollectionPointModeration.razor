@@ -1,0 +1,57 @@
+@page "/acopios/admin"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = "Moderators")]
+@inject QuakeReportApiClient ApiClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Moderación de centros de acopio</PageTitle>
+<MudText Typo="Typo.h5">Moderación de centros de acopio</MudText>
+<MudText Class="mb-4">Esta página debe estar protegida por Cloudflare Access.</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">Crear centro oficial</MudText>
+    <MudTextField Label="Nombre" @bind-Value="_officialName" />
+    <MudTextField Label="Dirección" @bind-Value="_officialAddress" />
+    <MudTextField Label="Necesidades actuales" @bind-Value="_officialNeeds" Lines="2" />
+    <MudTextField Label="Instrucciones de recepción" @bind-Value="_officialInstructions" Lines="2" />
+    <MudButton Class="mt-2" Variant="Variant.Filled" OnClick="CreateOfficialAsync">Publicar oficial</MudButton>
+    @if (_officialError is not null) { <MudAlert Severity="Severity.Error" Class="mt-2">@_officialError</MudAlert> }
+</MudPaper>
+
+@if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay envíos pendientes.</MudAlert> }
+@foreach (var point in _items)
+{
+    <MudPaper Class="pa-4 mb-3">
+        <MudText Typo="Typo.h6">@point.Name</MudText><MudText>@point.Address</MudText><MudText>Necesidades: @point.NeedsSummary</MudText>
+        <MudButton Class="mt-2" Color="Color.Success" OnClick="@(() => ModerateAsync(point.Id, CollectionPointModerationStatus.Approved))">Aprobar</MudButton>
+        <MudButton Class="mt-2 ml-2" Color="Color.Error" OnClick="@(() => ModerateAsync(point.Id, CollectionPointModerationStatus.Rejected))">Rechazar</MudButton>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<CollectionPointSummaryResponse> _items = [];
+    private string? _officialName, _officialAddress, _officialNeeds, _officialInstructions, _officialError;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { try { _items = (await ApiClient.GetPendingCollectionPointsAsync()).Items; } catch { _items = []; } }
+
+    private async Task ModerateAsync(Guid id, CollectionPointModerationStatus status)
+    {
+        var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var email = state.User.FindFirst("email")?.Value ?? state.User.Identity?.Name;
+        await ApiClient.ModerateCollectionPointAsync(id, status, email); await LoadAsync();
+    }
+
+    private async Task CreateOfficialAsync()
+    {
+        try
+        {
+            _officialError = null;
+            var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var email = state.User.FindFirst("email")?.Value ?? state.User.Identity?.Name;
+            await ApiClient.CreateOfficialCollectionPointAsync(new(_officialName ?? "", null, _officialAddress ?? "", null, null, null, _officialNeeds ?? "", _officialInstructions ?? "", null, null, null, null, null, ""), email);
+            _officialName = _officialAddress = _officialNeeds = _officialInstructions = null;
+            await LoadAsync();
+        }
+        catch (Exception exception) { _officialError = exception.Message; }
+    }
+}

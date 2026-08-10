@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.WebUtilities;
 using QuakeReport.Contracts.Dtos;
@@ -7,8 +8,87 @@ using QuakeReport.Contracts.Enums;
 namespace QuakeReport.Web.Services;
 
 /// <summary>Typed client for the QuakeReport API (apiservice).</summary>
-public class QuakeReportApiClient(HttpClient httpClient)
+public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configuration = null)
 {
+    private string ModerationKey => configuration?["Moderation:ApiKey"] ?? string.Empty;
+
+    public async Task<PagedResponse<CollectionPointSummaryResponse>> GetCollectionPointsAsync(string? query = null, CollectionPointOperationalStatus? operationalStatus = null, CollectionPointModerationStatus? moderationStatus = null, CollectionPointSortOption sort = CollectionPointSortOption.Newest, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };
+        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
+        if (operationalStatus is not null) parameters["operationalStatus"] = operationalStatus.ToString();
+        if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
+        var uri = QueryHelpers.AddQueryString("/api/collection-points", parameters);
+        return await httpClient.GetFromJsonAsync<PagedResponse<CollectionPointSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+    }
+
+    public async Task<CollectionPointResponse?> GetCollectionPointAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync($"/api/collection-points/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken);
+    }
+
+    public async Task<CreateCollectionPointResponse> CreateCollectionPointAsync(CreateCollectionPointRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/collection-points", request, cancellationToken); response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<CreateCollectionPointResponse>(cancellationToken))!;
+    }
+
+    public async Task<CollectionPointCommentResponse> CreateCollectionPointCommentAsync(Guid id, CreateCollectionPointCommentRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync($"/api/collection-points/{id}/comments", request, cancellationToken); response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<CollectionPointCommentResponse>(cancellationToken))!;
+    }
+
+    public async Task<CollectionPointResponse?> LookupCollectionPointByManagementCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/collection-points/management/lookup", new CollectionPointManagementCodeRequest(code), cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken);
+    }
+
+    public async Task<CollectionPointResponse> UpdateCollectionPointAsync(Guid id, string code, UpdateCollectionPointRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Put, $"/api/collection-points/{id}") { Content = JsonContent.Create(request) }; message.Headers.Add("X-Management-Code", code);
+        var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken))!;
+    }
+
+    public async Task<CollectionPointResponse> UpdateCollectionPointStatusAsync(Guid id, string code, CollectionPointOperationalStatus status, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Patch, $"/api/collection-points/{id}/status") { Content = JsonContent.Create(new UpdateCollectionPointStatusRequest(status)) }; message.Headers.Add("X-Management-Code", code);
+        var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken))!;
+    }
+
+    public async Task HideCollectionPointCommentAsync(Guid id, Guid commentId, string code, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/collection-points/{id}/comments/{commentId}/visibility");
+        request.Headers.Add("X-Management-Code", code);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<PagedResponse<CollectionPointSummaryResponse>> GetPendingCollectionPointsAsync(int page = 1, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/collection-points/moderation/pending?page={page}&pageSize=20"); request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<PagedResponse<CollectionPointSummaryResponse>>(cancellationToken))!;
+    }
+
+    public async Task<CollectionPointResponse> ModerateCollectionPointAsync(Guid id, CollectionPointModerationStatus status, string? email = null, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/collection-points/moderation/{id}") { Content = JsonContent.Create(new UpdateCollectionPointModerationRequest(status)) }; request.Headers.Add("X-Moderation-Service-Key", ModerationKey); if (!string.IsNullOrWhiteSpace(email)) request.Headers.Add("X-Moderator-Email", email);
+        var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken))!;
+    }
+
+    public async Task<CollectionPointResponse> CreateOfficialCollectionPointAsync(CreateCollectionPointRequest request, string? email = null, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/api/collection-points/moderation/official") { Content = JsonContent.Create(request) };
+        message.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        if (!string.IsNullOrWhiteSpace(email)) message.Headers.Add("X-Moderator-Email", email);
+        var response = await httpClient.SendAsync(message, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken))!;
+    }
     public async Task<PagedResponse<MissingPersonSummaryResponse>> GetMissingPeopleAsync(string? query = null, MissingPersonStatus status = MissingPersonStatus.Missing, MissingPersonSortOption sort = MissingPersonSortOption.Newest, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["status"] = status.ToString(), ["sort"] = sort.ToString() };
