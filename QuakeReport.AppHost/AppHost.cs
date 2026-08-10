@@ -6,8 +6,17 @@ using Azure.Provisioning.Storage;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
+var existingEnvironmentName = builder.AddParameter(
+    "existing-aca-environment-name",
+    "quakereportenvyksjkeaewt",
+    publishValueAsDefault: true);
+var existingEnvironmentResourceGroup = builder.AddParameter(
+    "existing-aca-environment-resource-group",
+    "rg-terremoto-prod",
+    publishValueAsDefault: true);
+
 builder.AddAzureContainerAppEnvironment("quake-report-env")
-    .WithDashboard(false);
+    .AsExisting(existingEnvironmentName, existingEnvironmentResourceGroup);
 
 var googleMapsApiKey = builder.AddParameter("google-maps-api-key", secret: true);
 var apexDomain = builder.AddParameter(

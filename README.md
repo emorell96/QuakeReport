@@ -18,12 +18,13 @@ for PostgreSQL Flexible Server, and Azurite as an Azure Storage account.
 
 The repository is configured with these low-cost launch defaults:
 
-- Resource group: `quake-report-prod-rg`
+- Resource group: `rg-terremoto-prod`
 - Region: `brazilsouth`
 - PostgreSQL: version 16, `Standard_B1ms`, 32 GB, 7-day backups, no HA
 - Storage: Standard LRS with anonymous reads allowed for individual report blobs
 - Web replicas: exactly 1; API replicas: 0-3
 - Public ingress: Web only
+- Existing Azure Container Apps environment: `quakereportenvyksjkeaewt`
 
 ### Prerequisites
 
@@ -53,7 +54,11 @@ configuration, and keep the Google key in the AppHost user-secret store:
 ```powershell
 aspire config set "Azure:SubscriptionId" "<subscription-id>"
 aspire config set "Azure:Location" "brazilsouth"
-aspire config set "Azure:ResourceGroup" "quake-report-prod-rg"
+aspire config set "Azure:ResourceGroup" "rg-terremoto-prod"
+aspire secret set "Parameters:existing-aca-environment-name" "quakereportenvyksjkeaewt" `
+  --apphost QuakeReport.AppHost/QuakeReport.AppHost.csproj
+aspire secret set "Parameters:existing-aca-environment-resource-group" "rg-terremoto-prod" `
+  --apphost QuakeReport.AppHost/QuakeReport.AppHost.csproj
 aspire secret set "Parameters:google-maps-api-key" "<google-api-key>" `
   --apphost QuakeReport.AppHost/QuakeReport.AppHost.csproj
 ```
@@ -88,7 +93,7 @@ The migration resource is a manual one-time job. After provisioning, list the
 generated names, start the migration job, and wait for a successful execution:
 
 ```powershell
-$resourceGroup = "quake-report-prod-rg"
+$resourceGroup = "rg-terremoto-prod"
 az containerapp job list --resource-group $resourceGroup --output table
 az containerapp job start --resource-group $resourceGroup --name "<migration-job-name>"
 az containerapp job execution list --resource-group $resourceGroup `
