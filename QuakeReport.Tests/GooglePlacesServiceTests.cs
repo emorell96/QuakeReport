@@ -23,6 +23,27 @@ public class GooglePlacesServiceTests
     }
 
     [TestMethod]
+    public async Task SearchFailsBeforeCallingGoogleWhenApiKeyIsMissing()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("{}"));
+        var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://places.googleapis.com/"),
+        };
+        var configuration = new ConfigurationBuilder().Build();
+        var service = new GooglePlacesService(
+            client,
+            configuration,
+            NullLogger<GooglePlacesService>.Instance);
+
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            service.SearchAsync("Bogota", null, null, "session", CancellationToken.None));
+
+        StringAssert.Contains(exception.Message, "Google Maps API key is not configured");
+        Assert.AreEqual(0, handler.CallCount);
+    }
+
+    [TestMethod]
     public async Task SearchCallsPlacesApiWithServerKeyFieldMaskAndLocationBias()
     {
         const string response = """

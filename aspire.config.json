@@ -1,5 +1,13 @@
 {
   "appHost": {
     "path": "QuakeReport.AppHost/QuakeReport.AppHost.csproj"
+  },
+  "features": {
+    "deployCommandEnabled": "true"
+  },
+  "Azure": {
+    "SubscriptionId": "a85bd6e2-f15f-4183-8910-fe8b3783e338",
+    "Location": "brazilsouth",
+    "ResourceGroup": "quake-report-prod-rg"
   }
 }
