@@ -1,0 +1,124 @@
+@page "/missing-people"
+@inject QuakeReportApiClient ApiClient
+@inject IConfiguration Configuration
+
+<PageTitle>Personas extraviadas - Terremoto.com.co</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h5">Personas extraviadas</MudText>
+    <MudButton Href="/missing-people/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd">Registrar persona</MudButton>
+</MudStack>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudTextField Label="Buscar por nombre o dirección" @bind-Value="_query" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
+    <MudButton Class="mt-2" OnClick="OnSearchAsync">Buscar</MudButton>
+    <MudStack Row="true" Spacing="2" Class="mt-3">
+        <MudSelect T="MissingPersonStatus" Label="Estado" Value="_status" ValueChanged="OnStatusChangedAsync">
+            <MudSelectItem Value="MissingPersonStatus.Missing">Extraviadas</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Found">Encontradas</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Deceased">Fallecidas</MudSelectItem>
+            <MudSelectItem Value="MissingPersonStatus.Rescued">Rescatadas</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="MissingPersonSortOption" Label="Ordenar" Value="_sort" ValueChanged="OnSortChangedAsync">
+            <MudSelectItem Value="MissingPersonSortOption.Newest">Más recientes</MudSelectItem>
+            <MudSelectItem Value="MissingPersonSortOption.LastSeenNewest">Último avistamiento</MudSelectItem>
+            <MudSelectItem Value="MissingPersonSortOption.Name">Nombre</MudSelectItem>
+        </MudSelect>
+    </MudStack>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudText Typo="Typo.h6">Buscar por documento</MudText>
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End">
+        <MudSelect T="IdentificationDocumentType" Label="Tipo" @bind-Value="_documentType">
+            <MudSelectItem Value="IdentificationDocumentType.ColombianCitizenId">Cédula</MudSelectItem>
+            <MudSelectItem Value="IdentificationDocumentType.IdentityCard">Tarjeta de identidad</MudSelectItem>
+            <MudSelectItem Value="IdentificationDocumentType.CivilRegistry">Registro civil</MudSelectItem>
+            <MudSelectItem Value="IdentificationDocumentType.ForeignerId">Cédula de extranjería</MudSelectItem>
+            <MudSelectItem Value="IdentificationDocumentType.Passport">Pasaporte</MudSelectItem>
+            <MudSelectItem Value="IdentificationDocumentType.Other">Otro</MudSelectItem>
+        </MudSelect>
+        <MudTextField Label="Número" @bind-Value="_documentNumber" />
+        <MudButton Variant="Variant.Outlined" OnClick="LookupAsync">Buscar</MudButton>
+    </MudStack>
+    <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_lookupToken" />
+    @if (_lookupMessage is not null) { <MudAlert Severity="Severity.Info" Class="mt-3">@_lookupMessage</MudAlert> }
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No hay personas para mostrar.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var person in _items)
+        {
+            <MudItem xs="12" sm="6">
+                <MudCard Class="h-100" @onclick="() => OpenPerson(person.Id)">
+                    @if (!string.IsNullOrWhiteSpace(person.PhotoUrl)) { <MudCardMedia Image="@person.PhotoUrl" Height="220" /> }
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">@person.FullName</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="@(person.Status == MissingPersonStatus.Found || person.Status == MissingPersonStatus.Rescued ? Color.Success : person.Status == MissingPersonStatus.Deceased ? Color.Error : Color.Warning)">@GetStatusLabel(person.Status)</MudChip>
+                        @if (person.IdentificationDocumentType is not null && person.IdentificationLastFour is not null) { <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText> }
+                        <MudText Typo="Typo.body2" Class="mt-2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
+                        <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
+                        <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+    @if (_totalPages > 1) { <MudPagination Class="mt-6" Count="_totalPages" Selected="_page" SelectedChanged="OnPageChangedAsync" /> }
+}
+
+@code {
+    private IReadOnlyList<MissingPersonSummaryResponse> _items = [];
+    private string? _query;
+    private MissingPersonStatus _status = MissingPersonStatus.Missing;
+    private MissingPersonSortOption _sort = MissingPersonSortOption.Newest;
+    private IdentificationDocumentType _documentType = IdentificationDocumentType.ColombianCitizenId;
+    private string? _documentNumber, _lookupToken;
+    private string? _lookupMessage;
+    private int _page = 1, _totalPages;
+    private bool _loading = true;
+    private CancellationTokenSource? _loadCancellation;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync()
+    {
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _loadCancellation, cts);
+        previous?.Cancel(); previous?.Dispose(); _loading = true;
+        try { var response = await ApiClient.GetMissingPeopleAsync(_query, _status, _sort, _page, 20, cts.Token); if (ReferenceEquals(_loadCancellation, cts)) { _items = response.Items; _totalPages = response.TotalPages; } }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
+        finally { if (ReferenceEquals(_loadCancellation, cts)) _loading = false; }
+    }
+    private async Task OnSearchAsync() { _page = 1; await LoadAsync(); }
+    private async Task OnStatusChangedAsync(MissingPersonStatus value) { _status = value; _page = 1; await LoadAsync(); }
+    private async Task OnSortChangedAsync(MissingPersonSortOption value) { _sort = value; _page = 1; await LoadAsync(); }
+    private async Task OnPageChangedAsync(int page) { _page = page; await LoadAsync(); }
+    private async Task LookupAsync()
+    {
+        _lookupMessage = null;
+        if (string.IsNullOrWhiteSpace(_documentNumber)) { _lookupMessage = "Ingresa un número de documento."; return; }
+        var result = await ApiClient.LookupMissingPersonAsync(new(_documentType, _documentNumber, _lookupToken ?? string.Empty));
+        if (result is null) _lookupMessage = "No se encontró una persona con ese documento.";
+        else Navigation.NavigateTo($"/missing-people/{result.Id}");
+    }
+    private void OpenPerson(Guid id) => Navigation.NavigateTo($"/missing-people/{id}");
+    private static string GetStatusLabel(MissingPersonStatus status) => status switch
+    {
+        MissingPersonStatus.Missing => "Extraviada",
+        MissingPersonStatus.Found => "Encontrada",
+        MissingPersonStatus.Deceased => "Fallecida",
+        MissingPersonStatus.Rescued => "Rescatada",
+        MissingPersonStatus.Closed => "Cerrada",
+        _ => status.ToString(),
+    };
+    [Inject] private NavigationManager Navigation { get; set; } = default!;
+}

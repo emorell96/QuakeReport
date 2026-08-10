@@ -1,0 +1,35 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div @ref="_element"></div>
+
+@code {
+    [Parameter] public string? SiteKey { get; set; }
+    [Parameter] public string Token { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> TokenChanged { get; set; }
+    private ElementReference _element;
+    private DotNetObjectReference<Turnstile>? _reference;
+    private string? _renderedKey;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!string.IsNullOrWhiteSpace(SiteKey) && SiteKey != _renderedKey)
+        {
+            _renderedKey = SiteKey;
+            _reference = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("turnstileInterop.render", _element, SiteKey, _reference);
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetToken(string token) => await TokenChanged.InvokeAsync(token);
+
+    [JSInvokable]
+    public async Task ClearToken() => await TokenChanged.InvokeAsync(string.Empty);
+
+    public ValueTask DisposeAsync()
+    {
+        _reference?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

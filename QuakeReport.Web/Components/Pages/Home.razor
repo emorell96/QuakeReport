@@ -15,6 +15,36 @@
 }
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h6">Personas extraviadas</MudText>
+    <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
+</MudStack>
+
+@if (_missingPeople.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-6">No hay personas extraviadas registradas.</MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-6" Spacing="2">
+        @foreach (var person in _missingPeople)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Class="h-100" @onclick="() => NavigateToMissingPerson(person.Id)" Style="cursor:pointer">
+                    @if (!string.IsNullOrWhiteSpace(person.PhotoUrl)) { <MudCardMedia Image="@person.PhotoUrl" Height="180" /> }
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">@person.FullName</MudText>
+                        @if (person.IdentificationLastFour is not null) { <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText> }
+                        <MudText Typo="Typo.body2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
+                        <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
+                        <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h6">Reportes de Daños</MudText>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">
         Actualizar
@@ -98,6 +128,7 @@ else
     private const int PageSize = 20;
 
     private IReadOnlyList<DamageReportSummaryResponse> _reports = [];
+    private IReadOnlyList<MissingPersonSummaryResponse> _missingPeople = [];
     private EarthquakeResponse? _earthquake;
     private bool _loading = true;
     private SeverityLevel? _severityFilter;
@@ -126,8 +157,9 @@ else
                 _severityFilter,
                 _sortOption,
                 cancellation.Token);
+            var missingPeopleTask = ApiClient.GetMissingPeopleAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
 
-            await Task.WhenAll(earthquakeTask, reportsTask);
+            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask);
             if (!ReferenceEquals(_loadCancellation, cancellation))
             {
                 return;
@@ -138,6 +170,7 @@ else
             _reports = response.Items;
             _totalCount = response.TotalCount;
             _totalPages = response.TotalPages;
+            _missingPeople = (await missingPeopleTask).Items;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -172,6 +205,7 @@ else
     }
 
     private void NavigateToReport(Guid id) => Navigation.NavigateTo($"/report/{id}");
+    private void NavigateToMissingPerson(Guid id) => Navigation.NavigateTo($"/missing-people/{id}");
 
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;
