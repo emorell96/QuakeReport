@@ -86,6 +86,16 @@ public class MissingPeopleController(
         return Ok(new PagedResponse<MissingPersonTipResponse>(items.Select(tip => tip.ToPublicResponse()).ToList(), page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
     }
 
+    [HttpPost("management/lookup")]
+    public async Task<IActionResult> LookupByManagementCode(ManagementCodeRequest request, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ManagementCode)) return BadRequest("Management code is required.");
+        var hash = MissingPersonSecurity.HashManagementCode(request.ManagementCode);
+        var person = await db.MissingPeople.AsNoTracking().Include(item => item.Locations)
+            .SingleOrDefaultAsync(item => item.ManagementCodeHash == hash, cancellationToken);
+        return person is null || person.Status == MissingPersonStatus.Closed ? NotFound() : Ok(person.ToResponse());
+    }
+
     [HttpPost]
     public async Task<IActionResult> Create(CreateMissingPersonRequest request, CancellationToken cancellationToken)
     {

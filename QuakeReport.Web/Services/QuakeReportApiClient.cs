@@ -25,6 +25,14 @@ public class QuakeReportApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<MissingPersonResponse>(cancellationToken);
     }
 
+    public async Task<MissingPersonResponse?> LookupMissingPersonByManagementCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/missing-people/management/lookup", new ManagementCodeRequest(code), cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<MissingPersonResponse>(cancellationToken);
+    }
+
     public async Task<CreateMissingPersonResponse> CreateMissingPersonAsync(CreateMissingPersonRequest request, CancellationToken cancellationToken = default)
     {
         var response = await httpClient.PostAsJsonAsync("/api/missing-people", request, cancellationToken);
@@ -76,6 +84,15 @@ public class QuakeReportApiClient(HttpClient httpClient)
         using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/missing-people/{id}/status") { Content = JsonContent.Create(new UpdateMissingPersonStatusRequest(status)) };
         request.Headers.Add("X-Management-Code", code);
         var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<MissingPersonResponse>(cancellationToken))!;
+    }
+
+    public async Task<MissingPersonResponse> UpdateMissingPersonAsync(Guid id, string code, UpdateMissingPersonRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Put, $"/api/missing-people/{id}") { Content = JsonContent.Create(request) };
+        message.Headers.Add("X-Management-Code", code);
+        var response = await httpClient.SendAsync(message, cancellationToken);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<MissingPersonResponse>(cancellationToken))!;
     }

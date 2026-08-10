@@ -109,6 +109,8 @@ public record UpdateMissingPersonRequest(
     DateTimeOffset LastSeenAt,
     IReadOnlyList<CreateMissingPersonLocationRequest> Locations);
 
+public record ManagementCodeRequest(string ManagementCode);
+
 public record IdentificationLookupRequest(
     IdentificationDocumentType DocumentType,
     string IdentificationNumber,

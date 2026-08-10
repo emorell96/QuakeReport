@@ -65,6 +65,7 @@ else
                         @if (person.IdentificationDocumentType is not null && person.IdentificationLastFour is not null) { <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText> }
                         <MudText Typo="Typo.body2" Class="mt-2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
                         <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
+                        <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
                     </MudCardContent>
                 </MudCard>
             </MudItem>

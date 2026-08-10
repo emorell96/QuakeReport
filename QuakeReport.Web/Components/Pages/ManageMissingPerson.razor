@@ -7,10 +7,6 @@
 <MudText Class="mb-4">Ingresa el código de administración que recibiste al publicar el caso.</MudText>
 
 <MudPaper Class="pa-4" MaxWidth="MaxWidth.Medium">
-    @if (Id == Guid.Empty)
-    {
-        <MudTextField Label="Identificador del registro" @bind-Value="_idText" HelperText="Usa el identificador mostrado después de publicar el registro." />
-    }
     <MudTextField Label="Código de administración" @bind-Value="_code" InputType="InputType.Password" />
     <MudButton Class="mt-3" Variant="Variant.Filled" OnClick="LoadAsync" Disabled="_loading">Cargar</MudButton>
     @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert> }
@@ -26,7 +22,30 @@
             <MudSelectItem Value="MissingPersonStatus.Closed">Cerrada</MudSelectItem>
         </MudSelect>
         <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="SaveStatusAsync">Guardar estado</MudButton>
+        <MudButton Class="mt-3 ml-2" Variant="Variant.Outlined" OnClick="BeginEdit">Editar información</MudButton>
     </MudPaper>
+
+    @if (_editing)
+    {
+        <MudPaper Class="pa-4 mt-4" MaxWidth="MaxWidth.Medium">
+            <MudText Typo="Typo.h6">Editar información</MudText>
+            <MudTextField Label="Nombre completo" @bind-Value="_editName" />
+            <MudTextField Label="Alias u otros nombres" @bind-Value="_editAliases" />
+            <MudTextField Label="Edad aproximada" @bind-Value="_editAge" />
+            <MudDatePicker Label="Fecha del último avistamiento" @bind-Date="_editLastSeen" />
+            <MudTextField Label="Descripción" Lines="4" @bind-Value="_editDescription" />
+            <MudTextField Label="Descripción física" Lines="3" @bind-Value="_editPhysical" />
+            <MudTextField Label="Ropa u otros detalles" Lines="3" @bind-Value="_editClothing" />
+            @foreach (var location in _editLocations.Select((value, index) => (value, index)))
+            {
+                <MudTextField Class="mt-2" Label="Posible ubicación" @bind-Value="location.value.Address" />
+                <MudTextField Label="Nota" @bind-Value="location.value.Note" />
+                @if (_editLocations.Count > 1) { <MudButton Size="Size.Small" OnClick="@(() => _editLocations.RemoveAt(location.index))">Eliminar ubicación</MudButton> }
+            }
+            <MudButton Class="mt-2" OnClick="@(() => _editLocations.Add(new()))">Agregar ubicación</MudButton>
+            <MudButton Class="mt-3 ml-2" Variant="Variant.Filled" OnClick="SaveEditAsync">Guardar cambios</MudButton>
+        </MudPaper>
+    }
 
     <MudPaper Class="pa-4 mt-4" MaxWidth="MaxWidth.Medium">
         <MudText Typo="Typo.h6">Informaciones privadas</MudText>
@@ -56,11 +75,14 @@
 
 @code {
     [Parameter] public Guid Id { get; set; }
-    private string? _code, _error, _photoMessage, _idText;
+    private string? _code, _error, _photoMessage;
     private MissingPersonResponse? _person;
     private IReadOnlyList<PrivateMissingPersonTipResponse> _tips = [];
     private MissingPersonStatus _status;
-    private bool _loading, _photoUploaded;
+    private bool _loading, _photoUploaded, _editing;
+    private string? _editName, _editAliases, _editAge, _editDescription, _editPhysical, _editClothing;
+    private DateTime? _editLastSeen;
+    private readonly List<EditLocation> _editLocations = [];
 
     private async Task LoadAsync()
     {
@@ -68,18 +90,39 @@
         try
         {
             if (string.IsNullOrWhiteSpace(_code)) throw new InvalidOperationException("Ingresa el código de administración.");
-            if (Id == Guid.Empty)
-            {
-                if (!Guid.TryParse(_idText, out var parsedId)) throw new InvalidOperationException("Ingresa un identificador válido.");
-                Id = parsedId;
-            }
-            _person = await ApiClient.GetMissingPersonAsync(Id);
+            _person = Id == Guid.Empty
+                ? await ApiClient.LookupMissingPersonByManagementCodeAsync(_code)
+                : await ApiClient.GetMissingPersonAsync(Id);
             if (_person is null) throw new InvalidOperationException("No se encontró este registro.");
             _status = _person.Status;
+            Id = _person.Id;
             _tips = await ApiClient.GetPrivateMissingPersonTipsAsync(Id, _code);
+            BeginEdit();
         }
         catch (Exception exception) { _error = exception.Message; _person = null; }
         finally { _loading = false; }
+    }
+
+    private void BeginEdit()
+    {
+        if (_person is null) return;
+        _editName = _person.FullName; _editAliases = _person.Aliases; _editAge = _person.ApproximateAge;
+        _editDescription = _person.Description; _editPhysical = _person.PhysicalDescription; _editClothing = _person.ClothingDescription;
+        _editLastSeen = _person.LastSeenAt.DateTime;
+        _editLocations.Clear();
+        _editLocations.AddRange(_person.Locations.Select(location => new EditLocation { Address = location.Address, Note = location.Note, Latitude = location.Latitude, Longitude = location.Longitude }));
+        if (_editLocations.Count == 0) _editLocations.Add(new());
+        _editing = true;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        try
+        {
+            _person = await ApiClient.UpdateMissingPersonAsync(Id, _code!, new(_editName ?? "", _editAliases, _editAge, _editDescription ?? "", _editPhysical, _editClothing, ToUtcOffset(_editLastSeen), _editLocations.Select(location => new CreateMissingPersonLocationRequest(location.Address ?? "", location.Latitude, location.Longitude, location.Note)).ToList()));
+            _editing = false;
+        }
+        catch (Exception exception) { _error = exception.Message; }
     }
 
     private async Task SaveStatusAsync()
@@ -113,4 +156,7 @@
         }
         catch (Exception exception) { _photoMessage = exception.Message; }
     }
+
+    private static DateTimeOffset ToUtcOffset(DateTime? value) => new(DateTime.SpecifyKind(value ?? DateTime.Today, DateTimeKind.Unspecified), TimeSpan.Zero);
+    private sealed class EditLocation { public string? Address { get; set; } public string? Note { get; set; } public double? Latitude { get; set; } public double? Longitude { get; set; } }
 }

@@ -14,7 +14,10 @@ else if (_person is null)
 }
 else
 {
-    <MudButton Href="/missing-people" StartIcon="@Icons.Material.Filled.ArrowBack">Volver</MudButton>
+    <MudStack Row="true" Spacing="2">
+        <MudButton Href="/missing-people" StartIcon="@Icons.Material.Filled.ArrowBack">Volver</MudButton>
+        <MudButton Href="@($"/missing-people/{Id}/manage")" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit">Editar registro</MudButton>
+    </MudStack>
     <MudPaper Class="pa-4 mt-4">
         @if (!string.IsNullOrWhiteSpace(_person.PhotoUrl)) { <MudImage Src="@_person.PhotoUrl" Alt="@_person.FullName" Width="320" Class="mb-3" /> }
         <MudText Typo="Typo.h4">@_person.FullName</MudText>
