@@ -12,6 +12,78 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
 {
     private string ModerationKey => configuration?["Moderation:ApiKey"] ?? string.Empty;
 
+    public async Task<PagedResponse<HelpRequestSummaryResponse>> GetHelpRequestsAsync(string? query = null, HelpRequestPriority? priority = null, HelpNeedCategory? category = null, HelpRequestStatus? status = null, HelpRequestModerationStatus? moderationStatus = null, HelpRequestSortOption sort = HelpRequestSortOption.HighestPriority, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };
+        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
+        if (priority is not null) parameters["priority"] = priority.ToString();
+        if (category is not null) parameters["category"] = category.ToString();
+        if (status is not null) parameters["status"] = status.ToString();
+        if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
+        var uri = QueryHelpers.AddQueryString("/api/help-requests", parameters);
+        return await httpClient.GetFromJsonAsync<PagedResponse<HelpRequestSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+    }
+
+    public async Task<HelpRequestResponse?> GetHelpRequestAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync($"/api/help-requests/{id}", cancellationToken); if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null; response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken);
+    }
+
+    public async Task<CreateHelpRequestResponse> CreateHelpRequestAsync(CreateHelpRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/help-requests", request, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<CreateHelpRequestResponse>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestResponse?> LookupHelpRequestByManagementCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/help-requests/management/lookup", new HelpRequestManagementCodeRequest(code), cancellationToken); if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null; response.EnsureSuccessStatusCode(); return await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken);
+    }
+
+    public async Task<HelpRequestResponse> UpdateHelpRequestAsync(Guid id, string code, UpdateHelpRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Put, $"/api/help-requests/{id}") { Content = JsonContent.Create(request) }; message.Headers.Add("X-Management-Code", code); var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestResponse> UpdateHelpRequestStatusAsync(Guid id, string code, HelpRequestStatus status, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Patch, $"/api/help-requests/{id}/status") { Content = JsonContent.Create(new UpdateHelpRequestStatusRequest(status)) }; message.Headers.Add("X-Management-Code", code); var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestCommentResponse> CreateHelpRequestCommentAsync(Guid id, CreateHelpRequestCommentRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync($"/api/help-requests/{id}/comments", request, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestCommentResponse>(cancellationToken))!;
+    }
+
+    public async Task HideHelpRequestCommentAsync(Guid id, Guid commentId, string code, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/help-requests/{id}/comments/{commentId}/visibility"); request.Headers.Add("X-Management-Code", code); var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<PagedResponse<HelpRequestSummaryResponse>> GetPendingHelpRequestsAsync(int page = 1, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/help-requests/moderation/pending?page={page}&pageSize=20"); request.Headers.Add("X-Moderation-Service-Key", ModerationKey); var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<PagedResponse<HelpRequestSummaryResponse>>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestResponse> ModerateHelpRequestAsync(Guid id, HelpRequestModerationStatus status, string? email = null, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/help-requests/moderation/{id}") { Content = JsonContent.Create(new UpdateHelpRequestModerationRequest(status)) }; request.Headers.Add("X-Moderation-Service-Key", ModerationKey); if (!string.IsNullOrWhiteSpace(email)) request.Headers.Add("X-Moderator-Email", email); var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestResponse> ModeratorUpdateHelpRequestAsync(Guid id, UpdateHelpRequestRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Put, $"/api/help-requests/moderation/{id}") { Content = JsonContent.Create(request) }; message.Headers.Add("X-Moderation-Service-Key", ModerationKey); var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestResponse> ModeratorUpdateHelpRequestStatusAsync(Guid id, HelpRequestStatus status, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Patch, $"/api/help-requests/moderation/{id}/status") { Content = JsonContent.Create(new UpdateHelpRequestStatusRequest(status)) }; message.Headers.Add("X-Moderation-Service-Key", ModerationKey); var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
+    }
+
+    public async Task<HelpRequestResponse> CreateOfficialHelpRequestAsync(CreateHelpRequestRequest request, string? email = null, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/api/help-requests/moderation/official") { Content = JsonContent.Create(request) }; message.Headers.Add("X-Moderation-Service-Key", ModerationKey); if (!string.IsNullOrWhiteSpace(email)) message.Headers.Add("X-Moderator-Email", email); var response = await httpClient.SendAsync(message, cancellationToken); response.EnsureSuccessStatusCode(); return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
+    }
+
     public async Task<PagedResponse<ShelterSummaryResponse>> GetSheltersAsync(string? query = null, ShelterOperationalStatus? operationalStatus = null, ShelterModerationStatus? moderationStatus = null, ShelterSortOption sort = ShelterSortOption.Newest, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };

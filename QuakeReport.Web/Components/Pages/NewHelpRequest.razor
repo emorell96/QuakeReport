@@ -1,0 +1,33 @@
+@page "/ayuda/nueva"
+@inject QuakeReportApiClient ApiClient
+@inject IConfiguration Configuration
+
+<PageTitle>Publicar solicitud de ayuda - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5" Class="mb-4">Publicar solicitud de ayuda</MudText>
+<MudAlert Severity="Severity.Warning" Class="mb-4">Las solicitudes aparecen como <strong>No verificado</strong> hasta que un moderador las revise. El teléfono o WhatsApp será público.</MudAlert>
+<MudPaper Class="pa-4">
+    <MudTextField Label="Título*" @bind-Value="_title" Required="true" />
+    <MudTextField Label="Equipo o persona solicitante*" @bind-Value="_requester" Required="true" />
+    <MudTextField Label="Organización" @bind-Value="_organization" />
+    <AddressSearch @bind-Address="_address" Latitude="_latitude" Longitude="_longitude" OnPlaceSelected="OnPlaceSelected" OnCoordinatesCleared="ClearCoordinates" />
+    <MudTextField Label="¿Qué ayuda necesitan?*" Lines="4" @bind-Value="_details" Required="true" />
+    <MudTextField Label="Instrucciones adicionales" Lines="3" @bind-Value="_instructions" />
+    <MudGrid>
+        <MudItem xs="12" sm="6"><MudSelect T="HelpRequestPriority" Label="Prioridad" @bind-Value="_priority"><MudSelectItem Value="HelpRequestPriority.Low">Baja</MudSelectItem><MudSelectItem Value="HelpRequestPriority.Medium">Media</MudSelectItem><MudSelectItem Value="HelpRequestPriority.High">Alta</MudSelectItem><MudSelectItem Value="HelpRequestPriority.Critical">Crítica</MudSelectItem></MudSelect></MudItem>
+        <MudItem xs="12" sm="6"><MudSelect T="HelpNeedCategory" Label="Qué tipo de ayuda necesitan" @bind-Value="_category"><MudSelectItem Value="HelpNeedCategory.Personnel">Personal de apoyo</MudSelectItem><MudSelectItem Value="HelpNeedCategory.Medical">Asistencia o suministros médicos</MudSelectItem><MudSelectItem Value="HelpNeedCategory.RescueEquipment">Equipos de rescate</MudSelectItem><MudSelectItem Value="HelpNeedCategory.Machinery">Maquinaria</MudSelectItem><MudSelectItem Value="HelpNeedCategory.Transportation">Transporte</MudSelectItem><MudSelectItem Value="HelpNeedCategory.FoodAndWater">Alimentos y agua</MudSelectItem><MudSelectItem Value="HelpNeedCategory.Communications">Comunicaciones</MudSelectItem><MudSelectItem Value="HelpNeedCategory.TemporaryShelter">Alojamiento temporal</MudSelectItem><MudSelectItem Value="HelpNeedCategory.Security">Seguridad</MudSelectItem><MudSelectItem Value="HelpNeedCategory.Other">Otro</MudSelectItem></MudSelect></MudItem>
+    </MudGrid>
+    <MudTextField Label="Teléfono público*" @bind-Value="_phone" Required="true" /><MudTextField Label="WhatsApp público" @bind-Value="_whatsapp" /><MudTextField Label="Correo público" @bind-Value="_email" /><MudDatePicker Label="Necesitado antes de" @bind-Date="_neededBy" />
+    <MudCheckBox @bind-Value="_consent" Label="Confirmo que tengo autorización y acepto publicar estos datos de contacto." />
+    <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile" />
+    <MudButton Class="mt-4 responsive-primary-action" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">PUBLICAR SOLICITUD</MudButton>
+    @if (_code is not null) { <MudAlert Severity="Severity.Warning" Class="mt-4">Guarda este código de administración; se muestra una sola vez: <strong>@_code</strong></MudAlert> }
+    @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert> }
+</MudPaper>
+@code {
+    private string? _title, _requester, _organization, _address, _details, _instructions, _phone, _whatsapp, _email, _turnstile, _code, _error;
+    private double? _latitude, _longitude; private DateTime? _neededBy; private bool _consent, _saving;
+    private HelpRequestPriority _priority = HelpRequestPriority.Medium; private HelpNeedCategory _category = HelpNeedCategory.Other;
+    private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
+    private void ClearCoordinates() { _latitude = null; _longitude = null; }
+    private async Task SubmitAsync() { _saving = true; _error = null; try { if (!_consent) throw new InvalidOperationException("Debes aceptar la publicación de los datos."); DateTimeOffset? neededBy = _neededBy is null ? null : new DateTimeOffset(DateTime.SpecifyKind(_neededBy.Value, DateTimeKind.Utc)); var response = await ApiClient.CreateHelpRequestAsync(new(_title ?? "", _requester ?? "", _organization, _address ?? "", _latitude, _longitude, _details ?? "", _instructions, _phone ?? "", _whatsapp, _email, _priority, _category, neededBy, _consent, _turnstile ?? "")); _code = response.ManagementCode; } catch (Exception exception) { _error = exception.Message; } finally { _saving = false; } }
+}

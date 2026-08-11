@@ -15,6 +15,29 @@
 }
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
+    <MudText Typo="Typo.h6">Solicitudes de ayuda</MudText>
+    <MudButton Href="/ayuda" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Sos">Ver todas</MudButton>
+</MudStack>
+@if (_helpRequests.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-6">No hay solicitudes de ayuda activas publicadas.</MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-6" Spacing="2">
+        @foreach (var request in _helpRequests)
+        {
+            <MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent>
+                <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center"><MudText Typo="Typo.h6">@request.Title</MudText><MudChip T="string" Color="@HelpPriorityColor(request.Priority)" Size="Size.Small">@request.Priority</MudChip></MudStack>
+                @if (request.ModerationStatus == HelpRequestModerationStatus.Pending) { <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip> }
+                <MudText Typo="Typo.body2">@request.RequesterName · @request.Address</MudText><MudText Class="mt-2">@request.NeedDetails</MudText>
+                <MudButton Href="@($"/ayuda/{request.Id}")" Size="Size.Small" Class="mt-2">Ver detalles</MudButton>
+            </MudCardContent></MudCard></MudItem>
+        }
+    </MudGrid>
+}
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Refugios</MudText>
     <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
 </MudStack>
@@ -170,6 +193,7 @@ else
     private IReadOnlyList<CollectionPointSummaryResponse> _collectionPoints = [];
     private IReadOnlyList<ShelterSummaryResponse> _shelters = [];
     private IReadOnlyList<MissingPersonSummaryResponse> _missingPeople = [];
+    private IReadOnlyList<HelpRequestSummaryResponse> _helpRequests = [];
     private EarthquakeResponse? _earthquake;
     private bool _loading = true;
     private SeverityLevel? _severityFilter;
@@ -201,8 +225,9 @@ else
             var missingPeopleTask = ApiClient.GetMissingPeopleAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var collectionPointsTask = ApiClient.GetCollectionPointsAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var sheltersTask = ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, page: 1, pageSize: 6, cancellationToken: cancellation.Token);
+            var helpRequestsTask = ApiClient.GetHelpRequestsAsync(page: 1, pageSize: 6, sort: HelpRequestSortOption.HighestPriority, cancellationToken: cancellation.Token);
 
-            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, sheltersTask, collectionPointsTask);
+            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, sheltersTask, collectionPointsTask, helpRequestsTask);
             if (!ReferenceEquals(_loadCancellation, cancellation))
             {
                 return;
@@ -216,6 +241,7 @@ else
             _missingPeople = (await missingPeopleTask).Items;
             _shelters = (await sheltersTask).Items;
             _collectionPoints = (await collectionPointsTask).Items;
+            _helpRequests = (await helpRequestsTask).Items;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -251,6 +277,7 @@ else
 
     private void NavigateToReport(Guid id) => Navigation.NavigateTo($"/report/{id}");
     private void NavigateToMissingPerson(Guid id) => Navigation.NavigateTo($"/missing-people/{id}");
+    private static Color HelpPriorityColor(HelpRequestPriority priority) => priority switch { HelpRequestPriority.Critical => Color.Error, HelpRequestPriority.High => Color.Warning, _ => Color.Info };
 
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;

@@ -1,0 +1,46 @@
+@page "/ayuda"
+@implements IDisposable
+@inject QuakeReportApiClient ApiClient
+@inject NavigationManager Navigation
+@inject ShareService Share
+
+<PageTitle>Solicitudes de ayuda - Terremoto.com.co</PageTitle>
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
+    <MudText Typo="Typo.h5">Solicitudes de ayuda</MudText>
+    <MudButton Href="/ayuda/nueva" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add">Publicar solicitud</MudButton>
+</MudStack>
+<MudPaper Class="pa-4 mb-4">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" md="5"><MudTextField Label="Buscar" Placeholder="Necesidad, grupo o lugar" @bind-Value="_query" Immediate="true" OnKeyDown="OnSearchKeyDown" /></MudItem>
+        <MudItem xs="12" sm="6" md="3"><MudSelect T="HelpRequestPriority?" Label="Prioridad" @bind-Value="_priority" Clearable="true"><MudSelectItem T="HelpRequestPriority?" Value="@((HelpRequestPriority?)null)">Todas</MudSelectItem>@foreach (var value in Enum.GetValues<HelpRequestPriority>()) { <MudSelectItem T="HelpRequestPriority?" Value="@((HelpRequestPriority?)value)">@value</MudSelectItem> }</MudSelect></MudItem>
+        <MudItem xs="12" sm="6" md="4"><MudSelect T="HelpRequestSortOption" Label="Ordenar" @bind-Value="_sort"><MudSelectItem Value="HelpRequestSortOption.HighestPriority">Mayor urgencia</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.Newest">Más recientes</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.RecentlyUpdated">Actualizadas recientemente</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.NeededSoon">Necesidad más próxima</MudSelectItem></MudSelect></MudItem>
+    </MudGrid>
+    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="ReloadAsync">Buscar</MudButton>
+</MudPaper>
+@if (_loading) { <MudProgressCircular Indeterminate="true" Color="Color.Primary" /> }
+else if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay solicitudes de ayuda para mostrar.</MudAlert> }
+else {
+    <MudGrid Spacing="2">
+        @foreach (var item in _items) {
+            <MudItem xs="12" md="6"><MudCard Class="h-100"><MudCardContent>
+                <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Spacing="1"><MudText Typo="Typo.h6">@item.Title</MudText><MudChip T="string" Color="@PriorityColor(item.Priority)" Size="Size.Small">@item.Priority</MudChip>@if(item.ModerationStatus == HelpRequestModerationStatus.Pending){<MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>}</MudStack>
+                <MudText Typo="Typo.body2">@item.RequesterName · @item.Status</MudText><MudText Class="mt-2">@item.NeedDetails</MudText><MudText Typo="Typo.body2" Class="mt-2">@item.Address</MudText>
+                @if (item.IsOverdue) { <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">La fecha solicitada ya pasó.</MudAlert> }
+                <MudStack Row="true" Wrap="Wrap.Wrap" Class="mt-3"><MudButton Href="@($"/ayuda/{item.Id}")" Size="Size.Small">Ver detalles</MudButton><MudButton Size="Size.Small" StartIcon="@Icons.Material.Filled.Share" OnClick="@(() => ShareAsync(item))">Compartir</MudButton></MudStack>
+            </MudCardContent></MudCard></MudItem>
+        }
+    </MudGrid>
+    @if (_totalPages > 1) { <MudPagination Class="mt-5" Count="_totalPages" Selected="_page" SelectedChanged="OnPageChangedAsync" /> }
+}
+@code {
+    private IReadOnlyList<HelpRequestSummaryResponse> _items = [];
+    private string? _query; private HelpRequestPriority? _priority; private HelpRequestSortOption _sort = HelpRequestSortOption.HighestPriority;
+    private int _page = 1, _totalPages; private bool _loading; private CancellationTokenSource? _cts;
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    private async Task ReloadAsync() { var cts = new CancellationTokenSource(); var old = Interlocked.Exchange(ref _cts, cts); old?.Cancel(); old?.Dispose(); _loading = true; try { var result = await ApiClient.GetHelpRequestsAsync(_query, _priority, page: _page, pageSize: 20, sort: _sort, cancellationToken: cts.Token); if (ReferenceEquals(_cts, cts)) { _items = result.Items; _totalPages = result.TotalPages; } } catch (OperationCanceledException) when (cts.IsCancellationRequested) { } finally { if (ReferenceEquals(_cts, cts)) _loading = false; } }
+    private async Task OnSearchKeyDown(KeyboardEventArgs args) { if (args.Key == "Enter") { _page = 1; await ReloadAsync(); } }
+    private async Task OnPageChangedAsync(int page) { _page = page; await ReloadAsync(); }
+    private async Task ShareAsync(HelpRequestSummaryResponse item) { await Share.ShareAsync(item.Title, item.NeedDetails, Navigation.ToAbsoluteUri($"/ayuda/{item.Id}").ToString()); }
+    private static Color PriorityColor(HelpRequestPriority priority) => priority switch { HelpRequestPriority.Critical => Color.Error, HelpRequestPriority.High => Color.Warning, _ => Color.Info };
+    public void Dispose() { _cts?.Cancel(); _cts?.Dispose(); }
+}
