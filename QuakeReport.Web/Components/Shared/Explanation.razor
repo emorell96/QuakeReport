@@ -1,0 +1,40 @@
+<MudPaper Class="pa-4 pa-sm-6 mb-6" Elevation="2">
+    <MudText Typo="Typo.h4" GutterBottom="true">Ayudémonos entre todos</MudText>
+    <MudText Typo="Typo.body1" Class="mb-4">
+        Terremoto.com.co reúne información útil durante una emergencia para que las personas puedan
+        encontrar ayuda y compartir información importante con su comunidad.
+    </MudText>
+    <MudText Typo="Typo.body1" Class="mb-4">
+        Consulta reportes de daños, personas extraviadas, refugios, centros de acopio, donaciones de sangre
+        y solicitudes de ayuda. La información publicada por la comunidad puede no estar verificada, así que
+        confirma los datos directamente cuando sea posible.
+    </MudText>
+
+    <MudText Typo="Typo.h6" GutterBottom="true">¿Cómo puedes contribuir?</MudText>
+    <MudGrid Spacing="2" Class="mb-4">
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-3 h-100" Outlined="true">
+                <MudText Typo="Typo.subtitle1">¿Conoces un refugio?</MudText>
+                <MudText Typo="Typo.body2">Regístralo para que las personas puedan encontrar un lugar seguro.</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-3 h-100" Outlined="true">
+                <MudText Typo="Typo.subtitle1">¿Conoces una campaña de sangre?</MudText>
+                <MudText Typo="Typo.body2">Agrégala para ayudar a quienes necesitan donar o encontrar sangre.</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="pa-3 h-100" Outlined="true">
+                <MudText Typo="Typo.subtitle1">¿Alguien necesita ayuda?</MudText>
+                <MudText Typo="Typo.body2">Publica una solicitud de rescate o comparte un dato que pueda ayudar.</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="responsive-actions">
+        <MudButton Href="/ayuda/nueva" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">Publicar solicitud de ayuda</MudButton>
+        <MudButton Href="/donacion-sangre/nuevo" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Bloodtype">Agregar campaña de sangre</MudButton>
+        <MudButton Href="/refugios/nuevo" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.HomeWork">Registrar refugio</MudButton>
+    </MudStack>
+</MudPaper>

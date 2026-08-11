@@ -4,6 +4,8 @@
 
 <PageTitle>Terremoto.com.co</PageTitle>
 
+<Explanation />
+
 @if (_earthquake is not null)
 {
     <MudPaper Class="pa-4 mb-6" Elevation="2">
@@ -16,7 +18,7 @@
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Solicitudes de ayuda</MudText>
-    <MudButton Href="/ayuda" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Sos">Ver todas</MudButton>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/ayuda/nueva" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">Publicar solicitud</MudButton><MudButton Href="/ayuda" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Sos">Ver todas</MudButton></MudStack>
 </MudStack>
 @if (_helpRequests.Count == 0)
 {
@@ -37,12 +39,12 @@ else
     </MudGrid>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row"><MudText Typo="Typo.h6">Donación de sangre</MudText><MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton></MudStack>
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row"><MudText Typo="Typo.h6">Donación de sangre</MudText><MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/donacion-sangre/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Bloodtype">Registrar centro</MudButton><MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton></MudStack></MudStack>
 @if (_bloodDonationCenters.Count == 0) { <MudAlert Severity="Severity.Info" Class="mb-6">No hay centros de donación abiertos publicados.</MudAlert> } else { <MudGrid Class="mb-6" Spacing="2">@foreach(var center in _bloodDonationCenters){<MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@center.Name</MudText>@if(center.ModerationStatus==BloodDonationModerationStatus.Pending){<MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>}<MudText Typo="Typo.body2">@center.Address</MudText><MudText Typo="Typo.body2">@BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText><MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton></MudCardContent></MudCard></MudItem>}</MudGrid> }
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Refugios</MudText>
-    <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/refugios/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.HomeWork">Registrar refugio</MudButton><MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton></MudStack>
 </MudStack>
 @if (_shelters.Count == 0)
 {
@@ -63,7 +65,7 @@ else
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Personas extraviadas</MudText>
-    <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/missing-people/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd">Registrar persona</MudButton><MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton></MudStack>
 </MudStack>
 
 @if (_missingPeople.Count == 0)
@@ -93,7 +95,7 @@ else
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Centros de acopio</MudText>
-    <MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/collection-points/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.VolunteerActivism">Registrar centro</MudButton><MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton></MudStack>
 </MudStack>
 @if (_collectionPoints.Count == 0)
 {
@@ -111,9 +113,7 @@ else
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Reportes de Daños</MudText>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">
-        Actualizar
-    </MudButton>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/report/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddAlert">Reportar daño</MudButton><MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Actualizar</MudButton></MudStack>
 </MudStack>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
