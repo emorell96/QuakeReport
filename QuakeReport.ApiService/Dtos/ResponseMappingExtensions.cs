@@ -105,4 +105,28 @@ public static class ResponseMappingExtensions
         shelter.Latitude.HasValue && shelter.Longitude.HasValue
             ? $"https://www.google.com/maps/search/?api=1&query={shelter.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{shelter.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
             : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(shelter.Address)}";
+
+    public static HelpRequestSummaryResponse ToSummaryResponse(this HelpRequest request) => new(
+        request.Id, request.Title, request.RequesterName, request.OrganizationName, request.Address,
+        request.NeedDetails, request.Priority, request.NeedCategories, request.Status,
+        request.ModerationStatus, request.Source, request.NeededBy, request.CreatedAt, request.UpdatedAt,
+        request.GoogleMapsUrl(), request.NeededBy is not null && request.NeededBy < DateTimeOffset.UtcNow,
+        request.UpdatedAt < DateTimeOffset.UtcNow.AddHours(-12));
+
+    public static HelpRequestResponse ToResponse(this HelpRequest request, IReadOnlyList<HelpRequestCommentResponse>? comments = null) => new(
+        request.Id, request.EarthquakeId, request.Title, request.RequesterName, request.OrganizationName,
+        request.Address, request.Latitude, request.Longitude, request.NeedDetails, request.Instructions,
+        request.PublicPhone, request.PublicWhatsApp, request.PublicEmail, request.Priority,
+        request.NeedCategories, request.Status, request.ModerationStatus, request.Source, request.NeededBy,
+        request.CreatedAt, request.UpdatedAt, request.GoogleMapsUrl(),
+        request.NeededBy is not null && request.NeededBy < DateTimeOffset.UtcNow,
+        request.UpdatedAt < DateTimeOffset.UtcNow.AddHours(-12), comments ?? []);
+
+    public static HelpRequestCommentResponse ToResponse(this HelpRequestComment comment) =>
+        new(comment.Id, comment.DisplayName, comment.Message, comment.CreatedAt);
+
+    public static string GoogleMapsUrl(this HelpRequest request) =>
+        request.Latitude.HasValue && request.Longitude.HasValue
+            ? $"https://www.google.com/maps/search/?api=1&query={request.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{request.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(request.Address)}";
 }
