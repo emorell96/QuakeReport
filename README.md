@@ -1,13 +1,138 @@
 # QuakeReport
 
+🔗 **Sitio en vivo:** [terremoto.com.co](https://terremoto.com.co)
+
 ## Descripción
 
-QuakeReport es una herramienta para que la ciudadanía reporte daños causados
-por un terremoto: describe lo ocurrido, indica la gravedad y el tipo de daño,
-comparte su ubicación (por GPS o buscando la dirección) y adjunta fotos o
-videos como evidencia. Los reportes se listan de mayor a menor impacto, para
-ayudar a priorizar la respuesta donde más se necesita. Este MVP nace a raíz
-del terremoto en Colombia y está disponible en terremoto.com.co.
+QuakeReport (Terremoto.com.co) es un proyecto comunitario, gestionado por
+voluntarios, para compartir información útil durante la emergencia de un
+terremoto. No sustituye a los servicios de emergencia ni a las autoridades
+oficiales: es un complemento para que la comunidad se coordine y se ayude
+mientras esos canales oficiales se saturan o tardan en llegar. Nace a raíz
+del terremoto en Colombia.
+
+La plataforma está abierta a cualquier persona, sin necesidad de crear una
+cuenta, y reúne cuatro tipos de información:
+
+- **Reportes de daños** - describe lo ocurrido, la gravedad, el tipo de daño
+  (grietas, colapso, incendio, vía bloqueada, personas atrapadas, etc.),
+  comparte tu ubicación (por GPS o buscando la dirección) y adjunta fotos o
+  videos como evidencia. Los reportes se listan de mayor a menor impacto,
+  para ayudar a priorizar la respuesta donde más se necesita.
+- **Refugios** - dónde encontrar alojamiento temporal: dirección, estado
+  (abierto/cerrado), instrucciones y datos de contacto.
+- **Personas desaparecidas** - registra a alguien extraviado con su
+  descripción, última ubicación conocida y fotos, y permite que otras
+  personas dejen pistas (*tips*) sobre su paradero.
+- **Puntos de acopio** - dónde donar o recoger ayuda: qué se necesita, cómo
+  entregarlo y hasta cuándo está activo el punto.
+
+### Cómo funciona sin cuentas de usuario
+
+Nadie necesita registrarse para publicar. Al crear un refugio, punto de
+acopio o registro de persona desaparecida, se genera un **código de
+gestión** (solo vos lo ves) que permite editar o actualizar esa publicación
+más adelante sin necesidad de una cuenta. Las publicaciones pasan por un
+flujo de **moderación** antes de hacerse públicas, y cualquiera puede
+reportar contenido abusivo o incorrecto para que un moderador lo revise.
+Un captcha (Cloudflare Turnstile) protege los formularios contra spam.
+
+## Stack tecnológico
+
+- **.NET 10** con **.NET Aspire** para orquestar los servicios en desarrollo
+  y para el modelo de despliegue en Azure.
+- **Blazor Server** + **MudBlazor** para el sitio web.
+- **ASP.NET Core Web API** (controllers) para el backend.
+- **PostgreSQL** (Azure Database for PostgreSQL Flexible Server en
+  producción) con **Entity Framework Core**.
+- **Azure Blob Storage** para fotos y videos adjuntos.
+- **Google Maps / Places API** para geolocalización y búsqueda de
+  direcciones.
+- **Cloudflare Turnstile** para protección contra spam en los formularios
+  públicos.
+- **Azure Container Apps** como plataforma de despliegue, detrás de
+  **Cloudflare** para el dominio `terremoto.com.co`.
+
+## Estructura del proyecto
+
+| Proyecto | Qué contiene |
+|---|---|
+| `QuakeReport.AppHost` | Modelo de orquestación de Aspire (desarrollo local y despliegue a Azure). |
+| `QuakeReport.Web` | Frontend en Blazor Server + MudBlazor. |
+| `QuakeReport.ApiService` | API pública (reportes, refugios, personas desaparecidas, puntos de acopio, moderación). |
+| `QuakeReport.MigrationService` | Servicio de un solo uso que aplica las migraciones de EF Core al arrancar. |
+| `QuakeReport.Data` | Entidades y `DbContext` de EF Core. |
+| `QuakeReport.Contracts` | DTOs y enums compartidos entre la API y el frontend. |
+| `QuakeReport.ServiceDefaults` | Configuración compartida de Aspire (telemetría, health checks, resiliencia). |
+| `QuakeReport.Tests` | Pruebas unitarias e de integración. |
+
+## Cómo ejecutar el proyecto localmente
+
+### Requisitos
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- [Docker](https://www.docker.com/) (para los contenedores de PostgreSQL y el
+  emulador de Azure Storage)
+- Una clave de la API de Google Maps (Places + Geocoding)
+
+### Pasos
+
+1. Configura los *user secrets* del proyecto `QuakeReport.Web` (clic derecho
+   en el proyecto en Visual Studio → *Manage User Secrets*, o desde la
+   terminal):
+
+   ```powershell
+   dotnet user-secrets set "GOOGLE_MAPS_API_KEY" "<tu-clave>" --project QuakeReport.Web
+   ```
+
+2. Ejecuta el `AppHost` (esto levanta todos los servicios, incluyendo los
+   contenedores de PostgreSQL y del emulador de Storage, vía Docker):
+
+   ```powershell
+   dotnet run --project QuakeReport.AppHost
+   ```
+
+3. Abre el *dashboard* de Aspire (la URL aparece en la consola) para ver el
+   estado de cada servicio y acceder al sitio web.
+
+### Pruebas
+
+```powershell
+dotnet test --filter TestCategory=Unit
+```
+
+## Cómo contribuir
+
+Las contribuciones de la comunidad son bienvenidas.
+
+1. Haz un *fork* del repositorio y crea una rama descriptiva a partir de
+   `main` (por ejemplo `feature/mejora-formulario-refugios`).
+2. Mantén los cambios enfocados: un *pull request* por funcionalidad o
+   corrección, sin mezclar temas no relacionados.
+3. Sigue el estilo del código ya existente en el archivo que estés
+   modificando (nombres, organización de carpetas, patrones ya usados en el
+   proyecto).
+4. Si agregas o cambias comportamiento en la API o en `QuakeReport.Data`,
+   agrega o actualiza las pruebas correspondientes en `QuakeReport.Tests`.
+5. Antes de abrir el *pull request*, confirma que el proyecto compila y que
+   las pruebas pasan:
+
+   ```powershell
+   dotnet build QuakeReport.slnx
+   dotnet test --no-build --filter TestCategory=Unit
+   ```
+
+6. Describe en el *pull request* qué problema resuelve el cambio y cómo lo
+   probaste. Si el cambio afecta la interfaz visible para el usuario, incluye
+   capturas de pantalla.
+7. Ten en cuenta que todo el texto visible para el usuario final debe estar
+   en español (el proyecto no tiene selector de idioma).
+
+¿Encontraste un error o tenés una idea? Abre un *issue* en GitHub describiendo
+el problema o la propuesta antes de invertir tiempo en una implementación
+grande, para alinear el enfoque con el resto del proyecto.
+
+# English version
 
 ## Azure deployment
 
