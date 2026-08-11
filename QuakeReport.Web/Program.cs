@@ -81,6 +81,22 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Cloudflare Access protects the admin route at the edge. Validate the Access
+// identity again for direct-origin requests, but do not require Access on the
+// shared /_blazor circuit endpoint used by the public site.
+app.Use(async (context, next) =>
+{
+    if (!app.Environment.IsDevelopment() &&
+        context.Request.Path.StartsWithSegments("/acopios/admin") &&
+        context.User.Identity?.IsAuthenticated != true)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    await next();
+});
+
 app.UseAntiforgery();
 
 app.UseOutputCache();
