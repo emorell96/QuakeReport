@@ -15,6 +15,27 @@
 }
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h6">Refugios</MudText>
+    <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
+</MudStack>
+@if (_shelters.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-6">No hay refugios abiertos publicados.</MudAlert>
+}
+else
+{
+    <MudGrid Class="mb-6">
+        @foreach (var shelter in _shelters)
+        {
+            <MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent>
+                <MudStack Row="true"><MudText Typo="Typo.h6">@shelter.Name</MudText>@if (shelter.ModerationStatus == ShelterModerationStatus.Pending) { <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip> }</MudStack>
+                <MudText>@shelter.Address</MudText><MudText Typo="Typo.body2">@shelter.Description</MudText><MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+            </MudCardContent></MudCard></MudItem>
+        }
+    </MudGrid>
+}
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
     <MudText Typo="Typo.h6">Personas extraviadas</MudText>
     <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
 </MudStack>
@@ -147,6 +168,7 @@ else
 
     private IReadOnlyList<DamageReportSummaryResponse> _reports = [];
     private IReadOnlyList<CollectionPointSummaryResponse> _collectionPoints = [];
+    private IReadOnlyList<ShelterSummaryResponse> _shelters = [];
     private IReadOnlyList<MissingPersonSummaryResponse> _missingPeople = [];
     private EarthquakeResponse? _earthquake;
     private bool _loading = true;
@@ -178,8 +200,9 @@ else
                 cancellation.Token);
             var missingPeopleTask = ApiClient.GetMissingPeopleAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var collectionPointsTask = ApiClient.GetCollectionPointsAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
+            var sheltersTask = ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, page: 1, pageSize: 6, cancellationToken: cancellation.Token);
 
-            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, collectionPointsTask);
+            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, sheltersTask, collectionPointsTask);
             if (!ReferenceEquals(_loadCancellation, cancellation))
             {
                 return;
@@ -191,6 +214,7 @@ else
             _totalCount = response.TotalCount;
             _totalPages = response.TotalPages;
             _missingPeople = (await missingPeopleTask).Items;
+            _shelters = (await sheltersTask).Items;
             _collectionPoints = (await collectionPointsTask).Items;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)

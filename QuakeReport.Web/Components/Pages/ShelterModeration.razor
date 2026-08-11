@@ -1,0 +1,54 @@
+@page "/refugios/admin"
+@inject QuakeReportApiClient ApiClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Moderación de refugios - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5">Moderación de refugios</MudText>
+<MudText Class="mb-4">Revisa, modifica y aprueba refugios comunitarios o crea un refugio oficial.</MudText>
+
+<MudPaper Class="pa-4 mb-4">
+    <MudText Typo="Typo.h6">Crear refugio oficial</MudText>
+    <MudTextField Label="Nombre" @bind-Value="_officialName" /><MudTextField Label="Dirección manual" @bind-Value="_officialAddress" /><MudTextField Label="Descripción" Lines="2" @bind-Value="_officialDescription" /><MudTextField Label="Horarios e instrucciones" Lines="2" @bind-Value="_officialInstructions" />
+    <MudButton Class="mt-2" Variant="Variant.Filled" OnClick="CreateOfficialAsync">Publicar oficial</MudButton>
+</MudPaper>
+
+<MudText Typo="Typo.h6" Class="mb-2">Pendientes</MudText>
+@if (_pending.Count == 0) { <MudAlert Severity="Severity.Info">No hay refugios pendientes.</MudAlert> }
+@foreach (var shelter in _pending)
+{
+    <MudPaper Class="pa-4 mb-3"><MudText Typo="Typo.h6">@shelter.Name</MudText><MudText>@shelter.Address</MudText><MudText>@shelter.Description</MudText>
+        <MudButton Class="mt-2" OnClick="@(() => EditAsync(shelter.Id))">Modificar</MudButton><MudButton Class="mt-2 ml-2" Color="Color.Success" OnClick="@(() => ModerateAsync(shelter.Id, ShelterModerationStatus.Approved))">Aprobar</MudButton><MudButton Class="mt-2 ml-2" Color="Color.Error" OnClick="@(() => ModerateAsync(shelter.Id, ShelterModerationStatus.Rejected))">Rechazar</MudButton>
+    </MudPaper>
+}
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Modificar refugio</MudText>
+        <MudTextField Label="Nombre*" @bind-Value="_name" /><MudTextField Label="Organización" @bind-Value="_organization" />
+        <AddressSearch @bind-Address="_address" Latitude="_latitude" Longitude="_longitude" OnPlaceSelected="OnPlaceSelected" OnCoordinatesCleared="ClearCoordinates" />
+        <MudTextField Label="Descripción*" Lines="3" @bind-Value="_description" /><MudTextField Label="Horarios e instrucciones*" Lines="3" @bind-Value="_instructions" />
+        <MudTextField Label="Contacto" @bind-Value="_contactName" /><MudTextField Label="Teléfono" @bind-Value="_phone" /><MudTextField Label="WhatsApp" @bind-Value="_whatsapp" /><MudTextField Label="Correo" @bind-Value="_email" />
+        <MudSelect T="ShelterOperationalStatus" Label="Estado operativo" @bind-Value="_status"><MudSelectItem Value="ShelterOperationalStatus.Open">Abierto</MudSelectItem><MudSelectItem Value="ShelterOperationalStatus.Full">Lleno</MudSelectItem><MudSelectItem Value="ShelterOperationalStatus.Closed">Cerrado</MudSelectItem></MudSelect>
+        <MudButton Class="mt-3" Variant="Variant.Filled" OnClick="SaveEditAsync">Guardar modificación</MudButton><MudButton Class="mt-3 ml-2" OnClick="SaveStatusAsync">Guardar estado</MudButton>
+    </MudPaper>
+}
+@if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert> }
+
+@code {
+    private IReadOnlyList<ShelterSummaryResponse> _pending = []; private ShelterResponse? _editing;
+    private string? _officialName, _officialAddress, _officialDescription, _officialInstructions;
+    private string? _name, _organization, _address, _description, _instructions, _contactName, _phone, _whatsapp, _email, _error;
+    private double? _latitude, _longitude; private ShelterOperationalStatus _status;
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync() { try { _error = null; _pending = (await ApiClient.GetPendingSheltersAsync()).Items; } catch (Exception exception) { _error = exception.Message; _pending = []; } }
+    private async Task<string?> ModeratorEmailAsync() { var state = await AuthenticationStateProvider.GetAuthenticationStateAsync(); return state.User.FindFirst("email")?.Value ?? state.User.Identity?.Name; }
+    private async Task ModerateAsync(Guid id, ShelterModerationStatus status) { try { await ApiClient.ModerateShelterAsync(id, status, await ModeratorEmailAsync()); if (_editing?.Id == id) _editing = null; await LoadAsync(); } catch (Exception exception) { _error = exception.Message; } }
+    private async Task EditAsync(Guid id) { try { _editing = await ApiClient.GetShelterAsync(id); if (_editing is null) return; _name = _editing.Name; _organization = _editing.OrganizationName; _address = _editing.Address; _latitude = _editing.Latitude; _longitude = _editing.Longitude; _description = _editing.Description; _instructions = _editing.OperatingInstructions; _contactName = _editing.ContactName; _phone = _editing.ContactPhone; _whatsapp = _editing.ContactWhatsApp; _email = _editing.ContactEmail; _status = _editing.OperationalStatus; } catch (Exception exception) { _error = exception.Message; } }
+    private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
+    private void ClearCoordinates() { _latitude = null; _longitude = null; }
+    private UpdateShelterRequest EditRequest() => new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email);
+    private async Task SaveEditAsync() { try { _editing = await ApiClient.ModeratorUpdateShelterAsync(_editing!.Id, EditRequest()); await LoadAsync(); } catch (Exception exception) { _error = exception.Message; } }
+    private async Task SaveStatusAsync() { try { _editing = await ApiClient.ModeratorUpdateShelterStatusAsync(_editing!.Id, _status); await LoadAsync(); } catch (Exception exception) { _error = exception.Message; } }
+    private async Task CreateOfficialAsync() { try { await ApiClient.CreateOfficialShelterAsync(new(_officialName ?? "", null, _officialAddress ?? "", null, null, _officialDescription ?? "", _officialInstructions ?? "", null, null, null, null, ""), await ModeratorEmailAsync()); _officialName = _officialAddress = _officialDescription = _officialInstructions = null; } catch (Exception exception) { _error = exception.Message; } }
+}

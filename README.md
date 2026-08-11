@@ -173,7 +173,7 @@ job as the rest of the application. Community submissions are visible as
 **No verificado** until approved; official entries are created as **Oficial**.
 The management code is returned only once and is never stored in plain text.
 
-Protect `/acopios/admin*` in Cloudflare Access for both
+Protect `/acopios/admin*` and `/refugios/admin*` in Cloudflare Access for both
 `terremoto.com.co` and `www.terremoto.com.co`. Configure approved moderator
 email addresses and one-time PIN authentication. Production validates the
 Cloudflare Access JWT issuer, audience, signature, and expiry, and fails closed
@@ -184,3 +184,15 @@ After deploying the migration, start the migration Container App Job and verify
 it succeeds before publishing the collection-point URL. Public users can
 submit a point, comments, and abuse reports with Turnstile; moderators review
 pending entries at `/acopios/admin`.
+
+### Shelter registry
+
+Community shelters are published immediately as **No verificado** and can be
+managed with the one-time recovery code returned at creation. Moderators can
+approve, reject, fully edit, change the operational status, or create official
+shelters at `/refugios/admin`. Address lookup is optional: typed addresses are
+stored without coordinates and generate an address-based Google Maps link.
+
+After deployment, run the migration Container App Job so the `Shelters` and
+`ShelterAbuseReports` tables from `AddShelters` are created before smoke testing
+the public and moderator flows.

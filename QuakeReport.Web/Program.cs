@@ -87,7 +87,8 @@ app.UseAuthorization();
 app.Use(async (context, next) =>
 {
     if (!app.Environment.IsDevelopment() &&
-        context.Request.Path.StartsWithSegments("/acopios/admin") &&
+        (context.Request.Path.StartsWithSegments("/acopios/admin") ||
+         context.Request.Path.StartsWithSegments("/refugios/admin")) &&
         context.User.Identity?.IsAuthenticated != true)
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;

@@ -88,4 +88,21 @@ public static class ResponseMappingExtensions
         point.Latitude.HasValue && point.Longitude.HasValue
             ? $"https://www.google.com/maps/search/?api=1&query={point.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{point.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
             : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(point.Address)}";
+
+    public static ShelterSummaryResponse ToSummaryResponse(this Shelter shelter) => new(
+        shelter.Id, shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description,
+        shelter.OperatingInstructions, shelter.ModerationStatus, shelter.OperationalStatus,
+        shelter.Source, shelter.UpdatedAt, shelter.GoogleMapsUrl());
+
+    public static ShelterResponse ToResponse(this Shelter shelter) => new(
+        shelter.Id, shelter.EarthquakeId, shelter.Name, shelter.OrganizationName, shelter.Address,
+        shelter.Latitude, shelter.Longitude, shelter.Description, shelter.OperatingInstructions,
+        shelter.ContactName, shelter.ContactPhone, shelter.ContactWhatsApp, shelter.ContactEmail,
+        shelter.ModerationStatus, shelter.OperationalStatus, shelter.Source, shelter.CreatedAt,
+        shelter.UpdatedAt, shelter.GoogleMapsUrl());
+
+    public static string GoogleMapsUrl(this Shelter shelter) =>
+        shelter.Latitude.HasValue && shelter.Longitude.HasValue
+            ? $"https://www.google.com/maps/search/?api=1&query={shelter.Latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)},{shelter.Longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)}"
+            : $"https://www.google.com/maps/search/?api=1&query={Uri.EscapeDataString(shelter.Address)}";
 }

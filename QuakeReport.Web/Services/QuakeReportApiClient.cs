@@ -12,6 +12,104 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
 {
     private string ModerationKey => configuration?["Moderation:ApiKey"] ?? string.Empty;
 
+    public async Task<PagedResponse<ShelterSummaryResponse>> GetSheltersAsync(string? query = null, ShelterOperationalStatus? operationalStatus = null, ShelterModerationStatus? moderationStatus = null, ShelterSortOption sort = ShelterSortOption.Newest, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+    {
+        var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };
+        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
+        if (operationalStatus is not null) parameters["operationalStatus"] = operationalStatus.ToString();
+        if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
+        var uri = QueryHelpers.AddQueryString("/api/shelters", parameters);
+        return await httpClient.GetFromJsonAsync<PagedResponse<ShelterSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+    }
+
+    public async Task<ShelterResponse?> GetShelterAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync($"/api/shelters/{id}", cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken);
+    }
+
+    public async Task<CreateShelterResponse> CreateShelterAsync(CreateShelterRequest request, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/shelters", request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<CreateShelterResponse>(cancellationToken))!;
+    }
+
+    public async Task<ShelterResponse?> LookupShelterByManagementCodeAsync(string code, CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.PostAsJsonAsync("/api/shelters/management/lookup", new ShelterManagementCodeRequest(code), cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken);
+    }
+
+    public async Task<ShelterResponse> UpdateShelterAsync(Guid id, string code, UpdateShelterRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Put, $"/api/shelters/{id}") { Content = JsonContent.Create(request) };
+        message.Headers.Add("X-Management-Code", code);
+        var response = await httpClient.SendAsync(message, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
+    }
+
+    public async Task<ShelterResponse> UpdateShelterStatusAsync(Guid id, string code, ShelterOperationalStatus status, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Patch, $"/api/shelters/{id}/status") { Content = JsonContent.Create(new UpdateShelterStatusRequest(status)) };
+        message.Headers.Add("X-Management-Code", code);
+        var response = await httpClient.SendAsync(message, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
+    }
+
+    public async Task<PagedResponse<ShelterSummaryResponse>> GetPendingSheltersAsync(int page = 1, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/shelters/moderation/pending?page={page}&pageSize=20");
+        request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<PagedResponse<ShelterSummaryResponse>>(cancellationToken))!;
+    }
+
+    public async Task<ShelterResponse> ModerateShelterAsync(Guid id, ShelterModerationStatus status, string? email = null, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Patch, $"/api/shelters/moderation/{id}") { Content = JsonContent.Create(new UpdateShelterModerationRequest(status)) };
+        request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        if (!string.IsNullOrWhiteSpace(email)) request.Headers.Add("X-Moderator-Email", email);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
+    }
+
+    public async Task<ShelterResponse> ModeratorUpdateShelterAsync(Guid id, UpdateShelterRequest request, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Put, $"/api/shelters/moderation/{id}") { Content = JsonContent.Create(request) };
+        message.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        var response = await httpClient.SendAsync(message, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
+    }
+
+    public async Task<ShelterResponse> ModeratorUpdateShelterStatusAsync(Guid id, ShelterOperationalStatus status, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Patch, $"/api/shelters/moderation/{id}/status") { Content = JsonContent.Create(new UpdateShelterStatusRequest(status)) };
+        message.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        var response = await httpClient.SendAsync(message, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
+    }
+
+    public async Task<ShelterResponse> CreateOfficialShelterAsync(CreateShelterRequest request, string? email = null, CancellationToken cancellationToken = default)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Post, "/api/shelters/moderation/official") { Content = JsonContent.Create(request) };
+        message.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        if (!string.IsNullOrWhiteSpace(email)) message.Headers.Add("X-Moderator-Email", email);
+        var response = await httpClient.SendAsync(message, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
+    }
+
     public async Task<PagedResponse<CollectionPointSummaryResponse>> GetCollectionPointsAsync(string? query = null, CollectionPointOperationalStatus? operationalStatus = null, CollectionPointModerationStatus? moderationStatus = null, CollectionPointSortOption sort = CollectionPointSortOption.Newest, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
     {
         var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };

@@ -1,0 +1,36 @@
+@page "/refugios/nuevo"
+@inject QuakeReportApiClient ApiClient
+@inject IConfiguration Configuration
+
+<PageTitle>Registrar refugio - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5">Registrar refugio</MudText>
+<MudAlert Severity="Severity.Info" Class="my-4">El refugio aparecerá como no verificado hasta que un moderador lo revise. Si Google no encuentra la dirección, puedes escribirla manualmente.</MudAlert>
+<MudPaper Class="pa-4">
+    <MudTextField Label="Nombre del refugio*" @bind-Value="_name" Required="true" />
+    <MudTextField Label="Organización" @bind-Value="_organization" />
+    <AddressSearch @bind-Address="_address" Latitude="_latitude" Longitude="_longitude" OnPlaceSelected="OnPlaceSelected" OnCoordinatesCleared="ClearCoordinates" />
+    <MudTextField Label="Descripción*" Lines="3" @bind-Value="_description" Required="true" />
+    <MudTextField Label="Horarios e instrucciones de funcionamiento*" Lines="3" @bind-Value="_instructions" Required="true" />
+    <MudTextField Label="Nombre de contacto" @bind-Value="_contactName" />
+    <MudTextField Label="Teléfono" @bind-Value="_phone" />
+    <MudTextField Label="WhatsApp" @bind-Value="_whatsapp" />
+    <MudTextField Label="Correo" @bind-Value="_email" />
+    <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile" />
+    <MudButton Class="mt-4" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Registrar refugio</MudButton>
+    @if (_code is not null) { <MudAlert Severity="Severity.Warning" Class="mt-4">Guarda este código de administración; se muestra una sola vez: <strong>@_code</strong></MudAlert> }
+    @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert> }
+</MudPaper>
+
+@code {
+    private string? _name, _organization, _address, _description, _instructions, _contactName, _phone, _whatsapp, _email, _turnstile, _code, _error;
+    private double? _latitude, _longitude; private bool _saving;
+    private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
+    private void ClearCoordinates() { _latitude = null; _longitude = null; }
+    private async Task SubmitAsync()
+    {
+        _saving = true; _error = null;
+        try { var response = await ApiClient.CreateShelterAsync(new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email, _turnstile ?? "")); _code = response.ManagementCode; }
+        catch (Exception exception) { _error = exception.Message; }
+        finally { _saving = false; }
+    }
+}

@@ -35,6 +35,7 @@
     private GooglePlaceSuggestion? _selectedSuggestion;
     private string? _searchError;
     private string _sessionToken = CreateSessionToken();
+    private string? _coordinateAddress;
 
     [Parameter]
     public string? Address { get; set; }
@@ -51,6 +52,21 @@
     /// <summary>Fired when a place is picked from the dropdown, with its coordinates.</summary>
     [Parameter]
     public EventCallback<(string Address, double Latitude, double Longitude)> OnPlaceSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnCoordinatesCleared { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Latitude.HasValue && Longitude.HasValue)
+        {
+            _coordinateAddress ??= Address;
+        }
+        else
+        {
+            _coordinateAddress = null;
+        }
+    }
 
     private async Task<IEnumerable<GooglePlaceSuggestion>> SearchAddressesAsync(
         string? value,
@@ -86,6 +102,13 @@
 
     private async Task OnAddressTypedAsync(string? value)
     {
+        if (Latitude.HasValue && Longitude.HasValue &&
+            !string.Equals(value?.Trim(), _coordinateAddress?.Trim(), StringComparison.Ordinal))
+        {
+            _coordinateAddress = null;
+            await OnCoordinatesCleared.InvokeAsync();
+        }
+
         Address = value;
         if (_selectedSuggestion is not null
             && !string.Equals(value, _selectedSuggestion.Description, StringComparison.Ordinal))
@@ -119,6 +142,7 @@
             }
 
             Address = details.FormattedAddress;
+            _coordinateAddress = Address;
             await AddressChanged.InvokeAsync(Address);
             await OnPlaceSelected.InvokeAsync((Address, details.Latitude, details.Longitude));
         }
