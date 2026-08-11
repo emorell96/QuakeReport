@@ -17,6 +17,8 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
     public DbSet<CollectionPoint> CollectionPoints => Set<CollectionPoint>();
     public DbSet<CollectionPointComment> CollectionPointComments => Set<CollectionPointComment>();
     public DbSet<CollectionPointAbuseReport> CollectionPointAbuseReports => Set<CollectionPointAbuseReport>();
+    public DbSet<Shelter> Shelters => Set<Shelter>();
+    public DbSet<ShelterAbuseReport> ShelterAbuseReports => Set<ShelterAbuseReport>();
 
     /// <summary>
     /// The single event this MVP currently reports against. Referenced by the
@@ -152,6 +154,35 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
             entity.Property(e => e.Details).HasMaxLength(2000);
             entity.HasIndex(e => new { e.CollectionPointId, e.CreatedAt });
             entity.HasOne(e => e.CollectionPoint).WithMany(e => e.AbuseReports).HasForeignKey(e => e.CollectionPointId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Shelter>(entity =>
+        {
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.OrganizationName).HasMaxLength(200);
+            entity.Property(e => e.Address).HasMaxLength(400).IsRequired();
+            entity.Property(e => e.SearchText).HasMaxLength(1200);
+            entity.Property(e => e.Description).HasMaxLength(3000).IsRequired();
+            entity.Property(e => e.OperatingInstructions).HasMaxLength(2000).IsRequired();
+            entity.Property(e => e.ContactName).HasMaxLength(200);
+            entity.Property(e => e.ContactPhone).HasMaxLength(80);
+            entity.Property(e => e.ContactWhatsApp).HasMaxLength(80);
+            entity.Property(e => e.ContactEmail).HasMaxLength(320);
+            entity.Property(e => e.ManagementCodeHash).HasMaxLength(64);
+            entity.Property(e => e.ModeratedBy).HasMaxLength(320);
+            entity.HasIndex(e => new { e.EarthquakeId, e.ModerationStatus, e.OperationalStatus, e.CreatedAt });
+            entity.HasIndex(e => new { e.EarthquakeId, e.OperationalStatus, e.UpdatedAt });
+            entity.HasIndex(e => e.SearchText);
+            entity.HasIndex(e => e.ManagementCodeHash).IsUnique();
+            entity.HasOne(e => e.Earthquake).WithMany().HasForeignKey(e => e.EarthquakeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ShelterAbuseReport>(entity =>
+        {
+            entity.Property(e => e.Reason).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.Details).HasMaxLength(2000);
+            entity.HasIndex(e => new { e.ShelterId, e.CreatedAt });
+            entity.HasOne(e => e.Shelter).WithMany(e => e.AbuseReports).HasForeignKey(e => e.ShelterId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

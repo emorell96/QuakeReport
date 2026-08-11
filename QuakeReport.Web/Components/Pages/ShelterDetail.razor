@@ -1,0 +1,26 @@
+@page "/refugios/{Id:guid}"
+@inject QuakeReportApiClient ApiClient
+
+<PageTitle>@(_shelter?.Name ?? "Refugio") - Terremoto.com.co</PageTitle>
+@if (_loading) { <MudProgressCircular Indeterminate="true" /> }
+else if (_shelter is null) { <MudAlert Severity="Severity.Error">No se encontró este refugio.</MudAlert> }
+else
+{
+    <MudButton Href="/refugios" StartIcon="@Icons.Material.Filled.ArrowBack">Volver</MudButton>
+    <MudPaper Class="pa-4 mt-4">
+        <MudStack Row="true" Spacing="1"><MudText Typo="Typo.h4">@_shelter.Name</MudText>@if (_shelter.ModerationStatus == ShelterModerationStatus.Pending) { <MudChip T="string" Color="Color.Warning">No verificado</MudChip> } else if (_shelter.Source == ShelterSource.Official) { <MudChip T="string" Color="Color.Info">Oficial</MudChip> } else { <MudChip T="string" Color="Color.Success">Verificado</MudChip> }</MudStack>
+        <MudChip T="string" Class="mt-2">@StatusText(_shelter.OperationalStatus)</MudChip>
+        @if (_shelter.OrganizationName is not null) { <MudText Class="mt-2">@_shelter.OrganizationName</MudText> }
+        <MudText Class="mt-2">@_shelter.Address</MudText><MudButton Href="@_shelter.GoogleMapsUrl" Target="_blank" Variant="Variant.Outlined" Class="mt-2">Abrir en Google Maps</MudButton>
+        <MudText Typo="Typo.h6" Class="mt-4">Descripción</MudText><MudText>@_shelter.Description</MudText>
+        <MudText Typo="Typo.h6" Class="mt-4">Horarios e instrucciones</MudText><MudText>@_shelter.OperatingInstructions</MudText>
+        @if (_shelter.ContactName is not null || _shelter.ContactPhone is not null || _shelter.ContactWhatsApp is not null || _shelter.ContactEmail is not null) { <MudText Typo="Typo.h6" Class="mt-4">Contacto</MudText><MudText>@_shelter.ContactName @_shelter.ContactPhone @_shelter.ContactWhatsApp @_shelter.ContactEmail</MudText> }
+        <MudText Typo="Typo.caption" Class="mt-4">Actualizado: @_shelter.UpdatedAt.ToLocalTime().ToString("g")</MudText>
+    </MudPaper>
+}
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private ShelterResponse? _shelter; private bool _loading = true;
+    protected override async Task OnParametersSetAsync() { _loading = true; _shelter = await ApiClient.GetShelterAsync(Id); _loading = false; }
+    private static string StatusText(ShelterOperationalStatus status) => status switch { ShelterOperationalStatus.Open => "Abierto", ShelterOperationalStatus.Full => "Lleno", ShelterOperationalStatus.Closed => "Cerrado", _ => status.ToString() };
+}

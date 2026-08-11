@@ -1,0 +1,37 @@
+@page "/refugios/administrar"
+@inject QuakeReportApiClient ApiClient
+
+<PageTitle>Administrar refugio - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5">Administrar refugio</MudText>
+<MudText Class="mb-4">Ingresa el código recibido al registrar el refugio.</MudText>
+<MudPaper Class="pa-4">
+    <MudTextField Label="Código de administración" InputType="InputType.Password" @bind-Value="_code" />
+    <MudButton Class="mt-2" OnClick="LoadAsync">Cargar refugio</MudButton>
+    @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-2">@_error</MudAlert> }
+</MudPaper>
+@if (_shelter is not null)
+{
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Editar información</MudText>
+        <MudTextField Label="Nombre*" @bind-Value="_name" Required="true" />
+        <MudTextField Label="Organización" @bind-Value="_organization" />
+        <AddressSearch @bind-Address="_address" Latitude="_latitude" Longitude="_longitude" OnPlaceSelected="OnPlaceSelected" OnCoordinatesCleared="ClearCoordinates" />
+        <MudTextField Label="Descripción*" Lines="3" @bind-Value="_description" Required="true" />
+        <MudTextField Label="Horarios e instrucciones*" Lines="3" @bind-Value="_instructions" Required="true" />
+        <MudTextField Label="Nombre de contacto" @bind-Value="_contactName" /><MudTextField Label="Teléfono" @bind-Value="_phone" /><MudTextField Label="WhatsApp" @bind-Value="_whatsapp" /><MudTextField Label="Correo" @bind-Value="_email" />
+        <MudButton Class="mt-3" Variant="Variant.Filled" OnClick="SaveAsync">Guardar cambios</MudButton>
+        <MudSelect T="ShelterOperationalStatus" Label="Estado operativo" Class="mt-4" @bind-Value="_status"><MudSelectItem Value="ShelterOperationalStatus.Open">Abierto</MudSelectItem><MudSelectItem Value="ShelterOperationalStatus.Full">Lleno</MudSelectItem><MudSelectItem Value="ShelterOperationalStatus.Closed">Cerrado</MudSelectItem></MudSelect>
+        <MudButton Class="mt-2" OnClick="SaveStatusAsync">Guardar estado</MudButton>
+    </MudPaper>
+}
+@code {
+    private string? _code, _error, _name, _organization, _address, _description, _instructions, _contactName, _phone, _whatsapp, _email;
+    private double? _latitude, _longitude; private ShelterResponse? _shelter; private ShelterOperationalStatus _status;
+    private async Task LoadAsync() { try { _error = null; if (string.IsNullOrWhiteSpace(_code)) throw new InvalidOperationException("El código es obligatorio."); _shelter = await ApiClient.LookupShelterByManagementCodeAsync(_code); if (_shelter is null) throw new InvalidOperationException("No se encontró el refugio o el código no es válido."); Copy(); } catch (Exception exception) { _error = exception.Message; } }
+    private void Copy() { if (_shelter is null) return; _name = _shelter.Name; _organization = _shelter.OrganizationName; _address = _shelter.Address; _latitude = _shelter.Latitude; _longitude = _shelter.Longitude; _description = _shelter.Description; _instructions = _shelter.OperatingInstructions; _contactName = _shelter.ContactName; _phone = _shelter.ContactPhone; _whatsapp = _shelter.ContactWhatsApp; _email = _shelter.ContactEmail; _status = _shelter.OperationalStatus; }
+    private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
+    private void ClearCoordinates() { _latitude = null; _longitude = null; }
+    private UpdateShelterRequest Request() => new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email);
+    private async Task SaveAsync() { try { _error = null; _shelter = await ApiClient.UpdateShelterAsync(_shelter!.Id, _code!, Request()); Copy(); } catch (Exception exception) { _error = exception.Message; } }
+    private async Task SaveStatusAsync() { try { _error = null; _shelter = await ApiClient.UpdateShelterStatusAsync(_shelter!.Id, _code!, _status); } catch (Exception exception) { _error = exception.Message; } }
+}
