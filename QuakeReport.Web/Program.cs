@@ -111,24 +111,7 @@ app.Use(async (context, next) =>
 app.UseAntiforgery();
 
 app.UseOutputCache();
-
-app.MapPost("/api/ingestion/v1/{kind}", async (string kind, HttpContext context, IHttpClientFactory clients, CancellationToken cancellationToken) =>
-{
-    var allowed = kind is "collection-points" or "blood-donation-centers" or "shelters" or "help-requests";
-    if (!allowed) return Results.NotFound();
-
-    using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/ingestion/v1/{kind}")
-    {
-        Content = new StreamContent(context.Request.Body)
-    };
-    request.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(context.Request.ContentType ?? "application/json");
-    if (context.Request.Headers.TryGetValue("X-Ingestion-Api-Key", out var apiKey)) request.Headers.TryAddWithoutValidation("X-Ingestion-Api-Key", apiKey.ToArray());
-    if (context.Request.Headers.TryGetValue("Idempotency-Key", out var idempotencyKey)) request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey.ToArray());
-
-    using var response = await clients.CreateClient("ingestion-relay").SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-    var body = await response.Content.ReadAsStringAsync(cancellationToken);
-    return Results.Content(body, response.Content.Headers.ContentType?.ToString() ?? "application/json", statusCode: (int)response.StatusCode);
-});
+app.MapIngestionRelay();
 
 app.MapStaticAssets();
 
