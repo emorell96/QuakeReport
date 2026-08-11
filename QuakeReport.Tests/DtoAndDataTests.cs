@@ -141,4 +141,29 @@ public class DtoAndDataTests
         Assert.IsTrue(seeded.IsActive);
         Assert.AreEqual("M7.4 - Colombia", seeded.Name);
     }
+
+    [TestMethod]
+    public void BloodDonationCenterMapsSpanishSafePublicSummaryAndMapsUrl()
+    {
+        var center = new BloodDonationCenter { Id = Guid.NewGuid(), EarthquakeId = Guid.NewGuid(), Name = "Banco de sangre", Address = "Calle 1", OperatingInstructions = "Confirma antes de ir", NeedsSummary = "Donaciones", PublicPhone = "3001234567", Latitude = 4.5, Longitude = -74.3, BloodTypes = BloodTypeFlags.APositive | BloodTypeFlags.ONegative, Components = BloodComponentFlags.Plasma, CenterType = BloodDonationCenterType.PermanentSite };
+        var result = center.ToSummaryResponse();
+        Assert.AreEqual(center.Id, result.Id);
+        Assert.IsTrue(result.GoogleMapsUrl.Contains("4.5", StringComparison.Ordinal));
+        Assert.AreEqual(center.BloodTypes, result.BloodTypes);
+        Assert.AreEqual(center.Components, result.Components);
+        Assert.IsNull(result.GetType().GetProperty("PublicPhone"));
+    }
+
+    [TestMethod]
+    public void BloodDonationCenterModelHasRequiredIndexesAndCascadingComments()
+    {
+        using var db = TestDb.Create();
+        var entity = db.Model.FindEntityType(typeof(BloodDonationCenter));
+        Assert.IsNotNull(entity);
+        Assert.IsNotNull(entity!.FindNavigation(nameof(BloodDonationCenter.Comments)));
+        Assert.IsTrue(entity.GetIndexes().Any(index => index.Properties.Any(property => property.Name == nameof(BloodDonationCenter.SearchText))));
+        Assert.IsTrue(entity.GetIndexes().Any(index => index.Properties.Any(property => property.Name == nameof(BloodDonationCenter.ManagementCodeHash))));
+        var commentEntity = db.Model.FindEntityType(typeof(BloodDonationCenterComment));
+        Assert.IsTrue(commentEntity!.GetForeignKeys().Any(fk => fk.DeleteBehavior == DeleteBehavior.Cascade));
+    }
 }

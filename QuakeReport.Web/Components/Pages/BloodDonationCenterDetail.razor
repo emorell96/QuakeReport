@@ -1,0 +1,22 @@
+@page "/donacion-sangre/{Id:guid}"
+@inject QuakeReportApiClient ApiClient
+@inject ShareService Share
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+
+<PageTitle>Centro de donación - Terremoto.com.co</PageTitle>
+@if (_center is null) { <MudProgressCircular Indeterminate="true" /> }
+else
+{
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="mb-4"><MudButton Href="/donacion-sangre">Volver</MudButton><MudButton StartIcon="@Icons.Material.Filled.Share" OnClick="ShareAsync">Compartir</MudButton></MudStack>
+    <MudPaper Class="pa-4"><MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center"><MudText Typo="Typo.h5">@_center.Name</MudText><MudChip T="string">@BloodDonationDisplay.Status(_center.OperationalStatus)</MudChip>@if(_center.ModerationStatus==BloodDonationModerationStatus.Pending){<MudChip T="string" Color="Color.Warning">No verificado</MudChip>}else if(_center.Source==BloodDonationSource.Official){<MudChip T="string" Color="Color.Info">Oficial</MudChip>}else{<MudChip T="string" Color="Color.Success">Verificado</MudChip>}</MudStack><MudText>@BloodDonationDisplay.Type(_center.CenterType) · @_center.Address</MudText><MudText Class="mt-3"><strong>Grupos sanguíneos:</strong> @BloodDonationDisplay.BloodTypes(_center.BloodTypes)</MudText><MudText><strong>Componentes:</strong> @BloodDonationDisplay.Components(_center.Components)</MudText><MudText Class="mt-3">@_center.Description</MudText><MudText Class="mt-3"><strong>Horarios e instrucciones:</strong> @_center.OperatingInstructions</MudText><MudText><strong>Necesidades:</strong> @_center.NeedsSummary</MudText><MudButton Href="@_center.GoogleMapsUrl" Target="_blank" Class="mt-3">Abrir en Google Maps</MudButton><MudText Class="mt-2">Contacto: @_center.PublicPhone @(_center.PublicWhatsApp is null ? "" : $" · WhatsApp {_center.PublicWhatsApp}")</MudText></MudPaper>
+    <MudPaper Class="pa-4 mt-4"><MudText Typo="Typo.h6">Comentarios y actualizaciones</MudText>@foreach(var comment in _center.Comments){<MudPaper Class="pa-2 my-2" Outlined="true"><MudText Typo="Typo.body2">@(comment.DisplayName??"Anónimo") · @comment.CreatedAt.ToLocalTime().ToString("g")</MudText><MudText>@comment.Message</MudText></MudPaper>}<MudTextField Label="Mensaje" Lines="3" @bind-Value="_message"/><MudTextField Label="Nombre (opcional)" @bind-Value="_displayName"/><Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile"/><MudButton Class="mt-3" Variant="Variant.Filled" OnClick="CommentAsync">Enviar comentario</MudButton></MudPaper>
+}
+@if(_error is not null){<MudAlert Severity="Severity.Error" Class="mt-3">@_error</MudAlert>}
+@code {
+    [Parameter] public Guid Id { get; set; }
+    private BloodDonationCenterResponse? _center; private string? _message,_displayName,_turnstile,_error;
+    protected override async Task OnParametersSetAsync()=>_center=await ApiClient.GetBloodDonationCenterAsync(Id);
+    private Task ShareAsync()=>Share.ShareAsync(_center!.Name,"Centro de donación de sangre",Navigation.Uri);
+    private async Task CommentAsync(){try{await ApiClient.CreateBloodDonationCenterCommentAsync(Id,new(_displayName,_message??"",_turnstile??""));_center=await ApiClient.GetBloodDonationCenterAsync(Id);}catch(Exception e){_error=e.Message;}}
+}
