@@ -59,11 +59,14 @@ builder.Services.AddHttpClient<QuakeReportApiClient>(client =>
     .RemoveAllResilienceHandlers();
 #pragma warning restore EXTEXP0001
 
+#pragma warning disable EXTEXP0001
 builder.Services.AddHttpClient("ingestion-relay", client =>
 {
     client.BaseAddress = new("https+http://apiservice");
     client.Timeout = TimeSpan.FromMinutes(2);
-});
+})
+    .RemoveAllResilienceHandlers();
+#pragma warning restore EXTEXP0001
 
 builder.Services.AddHttpClient<GooglePlacesService>(client =>
 {

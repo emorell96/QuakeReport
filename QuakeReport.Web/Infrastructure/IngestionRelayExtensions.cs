@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-
 namespace QuakeReport.Web.Infrastructure;
 
 public static class IngestionRelayExtensions
@@ -26,12 +24,19 @@ public static class IngestionRelayExtensions
     {
         if (!AllowedKinds.Contains(kind)) return Results.NotFound();
 
+        if (context.Request.ContentLength is > 256_000)
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+        await using var bodyStream = new MemoryStream();
+        await context.Request.Body.CopyToAsync(bodyStream, cancellationToken);
+        var bodyBytes = bodyStream.ToArray();
+
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/api/ingestion/v1/{kind}")
         {
-            Content = new StreamContent(context.Request.Body)
+            Content = new ByteArrayContent(bodyBytes)
         };
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue(
-            context.Request.ContentType ?? "application/json");
+        request.Content.Headers.TryAddWithoutValidation(
+            "Content-Type", context.Request.ContentType ?? "application/json");
 
         ForwardHeader(context, request, "X-Ingestion-Api-Key");
         ForwardHeader(context, request, "Idempotency-Key");
