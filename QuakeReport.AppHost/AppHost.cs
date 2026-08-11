@@ -7,9 +7,12 @@ using Azure.Provisioning.Storage;
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Example: quakereportenvyksjkeaewt
-var existingEnvironmentName = builder.AddParameter("existing-aca-environment-name");
+var existingEnvironmentName = builder.AddParameter("existing-aca-environment-name", "quakereportenvyksjkeaewt", publishValueAsDefault: true);
 // Example: rg-terremoto-prod
-var existingEnvironmentResourceGroup = builder.AddParameter("existing-aca-environment-resource-group");
+var existingEnvironmentResourceGroup = builder.AddParameter(
+    "existing-aca-environment-resource-group",
+    "rg-terremoto-prod",
+    publishValueAsDefault: true);
 
 builder.AddAzureContainerAppEnvironment("quake-report-env")
     .AsExisting(existingEnvironmentName, existingEnvironmentResourceGroup);
@@ -29,11 +32,14 @@ var cloudflareAccessTeamDomain = builder.AddParameter("cloudflare-access-team-do
 // Example shape: development-audience
 var cloudflareAccessAudience = builder.AddParameter("cloudflare-access-audience");
 // Example: terremoto.com.co
-var apexDomain = builder.AddParameter("apex-domain");
+var apexDomain = builder.AddParameter("apex-domain", "terremoto.com.co", publishValueAsDefault: true);
 // Example: www.terremoto.com.co
-var wwwDomain = builder.AddParameter("www-domain");
+var wwwDomain = builder.AddParameter("www-domain", "www.terremoto.com.co", publishValueAsDefault: true);
 // Example: /subscriptions/<subscription-id>/resourceGroups/rg-terremoto-prod/providers/Microsoft.App/managedEnvironments/quakereportenvyksjkeaewt/certificates/terremoto-cloudflare
-var cloudflareCertificateId = builder.AddParameter("cloudflare-certificate-id");
+var cloudflareCertificateId = builder.AddParameter(
+    "cloudflare-certificate-id",
+    "/subscriptions/80fb3496-88b6-4097-86c6-efbc21c21cfa/resourceGroups/rg-terremoto-prod/providers/Microsoft.App/managedEnvironments/quakereportenvyksjkeaewt/certificates/terremoto-cloudflare",
+    publishValueAsDefault: true);
 
 var postgres = builder.AddAzurePostgresFlexibleServer("postgres")
     .RunAsContainer(container => container
