@@ -1,29 +1,42 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject IThemeService ThemeService
 
-<MudThemeProvider />
+<MudThemeProvider Theme="_theme" IsDarkMode="_isDarkMode" IsDarkModeChanged="OnDarkModeChanged" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1">
-        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="mr-2" />
-        <a href="/" class="brand-link">
+    <MudAppBar>
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" aria-label="Abrir menú de navegación" OnClick="ToggleDrawer" />
+        <a href="/" class="brand-link" aria-label="Ir al inicio de Terremoto.com.co">
             <MudText Typo="Typo.h6">Terremoto.com.co</MudText>
         </a>
         <MudSpacer />
-        <MudButton Href="/" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.List">Reportes</MudButton>
-        <MudButton Href="/report/new" Color="Color.Inherit" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.AddAlert">
-            Reportar Daño
-        </MudButton>
-        <MudButton Href="/missing-people" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.PersonSearch">Personas extraviadas</MudButton>
-        <MudButton Href="/collection-points" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.VolunteerActivism">Centros de acopio</MudButton>
-        <MudButton Href="/refugios" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.HomeWork">Refugios</MudButton>
-        <MudButton Href="/missing-people/manage" Color="Color.Inherit" StartIcon="@Icons.Material.Filled.AdminPanelSettings">Administrar registro</MudButton>
+        <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                       Color="Color.Inherit"
+                       aria-label="@(_isDarkMode ? "Cambiar a tema claro" : "Cambiar a tema oscuro")"
+                       OnClick="ToggleThemeAsync" />
     </MudAppBar>
 
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Medium" Class="my-6">
+    <MudDrawer @bind-Open="_drawerOpen">
+        <MudDrawerHeader>
+            <MudText Typo="Typo.h6">Navegación</MudText>
+        </MudDrawerHeader>
+        <MudNavMenu>
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.List" OnClick="CloseDrawer">Reportes</MudNavLink>
+            <MudNavLink Href="/report/new" Icon="@Icons.Material.Filled.AddAlert" OnClick="CloseDrawer">Reportar daño</MudNavLink>
+            <MudNavLink Href="/missing-people" Icon="@Icons.Material.Filled.PersonSearch" OnClick="CloseDrawer">Personas extraviadas</MudNavLink>
+            <MudNavLink Href="/collection-points" Icon="@Icons.Material.Filled.VolunteerActivism" OnClick="CloseDrawer">Centros de acopio</MudNavLink>
+            <MudNavLink Href="/refugios" Icon="@Icons.Material.Filled.HomeWork" OnClick="CloseDrawer">Refugios</MudNavLink>
+            <MudNavLink Href="/missing-people/manage" Icon="@Icons.Material.Filled.AdminPanelSettings" OnClick="CloseDrawer">Administrar registro</MudNavLink>
+            <MudNavLink Href="/about" Icon="@Icons.Material.Filled.Info" OnClick="CloseDrawer">Acerca de</MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+
+    <MudMainContent Class="site-main-content">
+        <MudContainer MaxWidth="MaxWidth.Large" Class="site-container">
             @Body
         </MudContainer>
     </MudMainContent>
@@ -32,5 +45,60 @@
 <div id="blazor-error-ui">
     Ocurrió un error inesperado.
     <a href="" class="reload">Recargar</a>
-    <a class="dismiss">🗙</a>
+    <a class="dismiss">Cerrar</a>
 </div>
+
+@code {
+    private bool _drawerOpen;
+    private bool _isDarkMode;
+    private bool _themeLoaded;
+    private readonly MudTheme _theme = new();
+    private EventCallback<Theme> _themeChangedCallback;
+
+    protected override void OnInitialized()
+    {
+        _themeChangedCallback = EventCallback.Factory.Create<Theme>(this, ApplyThemeAsync);
+        ThemeService.ThemeChangedCallbacks.Add(_themeChangedCallback);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await ApplyThemeAsync(await ThemeService.GetCurrentThemeAsync());
+        _themeLoaded = true;
+        StateHasChanged();
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void CloseDrawer() => _drawerOpen = false;
+
+    private async Task ToggleThemeAsync()
+    {
+        if (!_themeLoaded)
+        {
+            return;
+        }
+
+        await ThemeService.SetCurrentThemeAsync(_isDarkMode ? Theme.Light : Theme.Dark);
+    }
+
+    private Task OnDarkModeChanged(bool isDarkMode)
+        => _themeLoaded && isDarkMode != _isDarkMode
+            ? ThemeService.SetCurrentThemeAsync(isDarkMode ? Theme.Dark : Theme.Light)
+            : Task.CompletedTask;
+
+    private Task ApplyThemeAsync(Theme theme)
+    {
+        _isDarkMode = theme == Theme.Dark;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ThemeService.ThemeChangedCallbacks.Remove(_themeChangedCallback);
+    }
+}

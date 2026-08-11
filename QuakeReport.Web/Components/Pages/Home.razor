@@ -14,7 +14,7 @@
     </MudPaper>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Refugios</MudText>
     <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
 </MudStack>
@@ -35,7 +35,7 @@ else
     </MudGrid>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Personas extraviadas</MudText>
     <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
 </MudStack>
@@ -65,7 +65,7 @@ else
     </MudGrid>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Centros de acopio</MudText>
     <MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton>
 </MudStack>
@@ -83,7 +83,7 @@ else
     </MudGrid>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Reportes de Daños</MudText>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">
         Actualizar
@@ -130,7 +130,7 @@ else
         @foreach (var report in _reports)
         {
             <MudPaper Class="pa-4" Elevation="1" @onclick="() => NavigateToReport(report.Id)" Style="cursor:pointer">
-                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Start" Class="responsive-row">
                     <div>
                         <MudChip T="string" Color="@DisplayHelpers.SeverityColor(report.Severity)" Size="Size.Small">
                             @report.Severity.ToDisplayString()

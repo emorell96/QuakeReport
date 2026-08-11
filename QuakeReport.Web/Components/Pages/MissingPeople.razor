@@ -4,7 +4,7 @@
 
 <PageTitle>Personas extraviadas - Terremoto.com.co</PageTitle>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h5">Personas extraviadas</MudText>
     <MudButton Href="/missing-people/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd">Registrar persona</MudButton>
 </MudStack>
@@ -12,7 +12,7 @@
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudTextField Label="Buscar por nombre o dirección" @bind-Value="_query" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" />
     <MudButton Class="mt-2" OnClick="OnSearchAsync">Buscar</MudButton>
-    <MudStack Row="true" Spacing="2" Class="mt-3">
+    <MudStack Row="true" Spacing="2" Class="mt-3 responsive-row">
         <MudSelect T="MissingPersonStatus" Label="Estado" Value="_status" ValueChanged="OnStatusChangedAsync">
             <MudSelectItem Value="MissingPersonStatus.Missing">Extraviadas</MudSelectItem>
             <MudSelectItem Value="MissingPersonStatus.Found">Encontradas</MudSelectItem>
@@ -29,7 +29,7 @@
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudText Typo="Typo.h6">Buscar por documento</MudText>
-    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End">
+    <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End" Class="responsive-row">
         <MudSelect T="IdentificationDocumentType" Label="Tipo" @bind-Value="_documentType">
             <MudSelectItem Value="IdentificationDocumentType.ColombianCitizenId">Cédula</MudSelectItem>
             <MudSelectItem Value="IdentificationDocumentType.IdentityCard">Tarjeta de identidad</MudSelectItem>

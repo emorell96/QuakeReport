@@ -18,7 +18,7 @@
     <MudTextField Label="Correo" @bind-Value="_email" />
     <MudDatePicker Label="Fecha de cierre prevista (opcional)" @bind-Date="_endsAt" />
     <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile" />
-    <MudButton Class="mt-4" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Registrar</MudButton>
+    <MudButton Class="mt-4 responsive-primary-action" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Registrar</MudButton>
     @if (_code is not null) { <MudAlert Severity="Severity.Warning" Class="mt-4">Guarda este código de administración; se muestra una sola vez: <strong>@_code</strong></MudAlert> }
     @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert> }
 </MudPaper>

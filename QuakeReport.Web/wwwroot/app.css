@@ -1,5 +1,103 @@
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    margin: 0;
+    min-width: 320px;
+    overflow-x: hidden;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+.brand-link {
+    color: inherit;
+    text-decoration: none;
+    min-width: 0;
+}
+
+.site-main-content {
+    min-width: 0;
+}
+
+.site-container {
+    width: 100%;
+    max-width: 1200px;
+    min-width: 0;
+    padding: clamp(16px, 3vw, 32px) clamp(12px, 3vw, 32px);
+}
+
+.responsive-row {
+    flex-wrap: wrap;
+}
+
+.responsive-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.responsive-actions > .mud-button {
+    margin-left: 0 !important;
+}
+
+.responsive-control {
+    min-width: 0;
+}
+
+.responsive-primary-action {
+    max-width: 100%;
+}
+
+@media (max-width: 600px) {
+    .mud-appbar .mud-typography {
+        font-size: 1rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .site-container {
+        padding: 16px 12px 28px;
+    }
+
+    .responsive-row {
+        align-items: stretch !important;
+        flex-direction: column !important;
+        width: 100%;
+    }
+
+    .responsive-row > * {
+        max-width: 100%;
+        width: 100%;
+    }
+
+    .responsive-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .responsive-actions > .mud-button,
+    .responsive-actions > a.mud-button-root {
+        width: 100%;
+    }
+
+    .responsive-primary-action {
+        width: 100%;
+    }
+
+    .mud-grid-item {
+        min-width: 0;
+    }
+
+    .mud-card-content,
+    .mud-paper.pa-4 {
+        overflow-wrap: anywhere;
+    }
+
+    .mud-pagination {
+        max-width: 100%;
+        overflow-x: auto;
+    }
 }
 
 a, .btn-link {

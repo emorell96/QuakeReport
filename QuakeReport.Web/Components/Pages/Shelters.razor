@@ -3,7 +3,7 @@
 @implements IDisposable
 
 <PageTitle>Refugios - Terremoto.com.co</PageTitle>
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h5">Refugios</MudText>
     <MudButton Href="/refugios/nuevo" Variant="Variant.Filled" Color="Color.Primary">Registrar refugio</MudButton>
 </MudStack>
@@ -25,10 +25,10 @@ else
         @foreach (var shelter in _items)
         {
             <MudItem xs="12" sm="6"><MudCard Class="h-100"><MudCardContent>
-                <MudStack Row="true" Spacing="1"><MudText Typo="Typo.h6">@shelter.Name</MudText>@if (shelter.ModerationStatus == ShelterModerationStatus.Pending) { <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip> } else if (shelter.Source == ShelterSource.Official) { <MudChip T="string" Color="Color.Info" Size="Size.Small">Oficial</MudChip> } else { <MudChip T="string" Color="Color.Success" Size="Size.Small">Verificado</MudChip> }</MudStack>
+                <MudStack Row="true" Spacing="1" Class="responsive-row"><MudText Typo="Typo.h6">@shelter.Name</MudText>@if (shelter.ModerationStatus == ShelterModerationStatus.Pending) { <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip> } else if (shelter.Source == ShelterSource.Official) { <MudChip T="string" Color="Color.Info" Size="Size.Small">Oficial</MudChip> } else { <MudChip T="string" Color="Color.Success" Size="Size.Small">Verificado</MudChip> }</MudStack>
                 <MudChip T="string" Size="Size.Small" Color="@StatusColor(shelter.OperationalStatus)">@StatusText(shelter.OperationalStatus)</MudChip>
                 <MudText Class="mt-2">@shelter.Address</MudText><MudText Typo="Typo.body2">@shelter.Description</MudText>
-                <MudStack Row="true" Class="mt-2"><MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small">Ver detalles</MudButton><MudButton Href="@shelter.GoogleMapsUrl" Target="_blank" Size="Size.Small">Google Maps</MudButton></MudStack>
+                <MudStack Row="true" Class="mt-2 responsive-actions"><MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small">Ver detalles</MudButton><MudButton Href="@shelter.GoogleMapsUrl" Target="_blank" Size="Size.Small">Google Maps</MudButton></MudStack>
             </MudCardContent></MudCard></MudItem>
         }
     </MudGrid>

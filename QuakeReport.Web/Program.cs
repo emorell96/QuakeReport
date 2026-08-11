@@ -66,6 +66,7 @@ builder.Services.AddHttpClient<GooglePlacesService>(client =>
 });
 
 builder.Services.AddScoped<GeolocationService>();
+builder.Services.AddScoped<IThemeService, ThemeService>();
 
 var app = builder.Build();
 
