@@ -321,3 +321,38 @@ stored without coordinates and generate an address-based Google Maps link.
 After deployment, run the migration Container App Job so the `Shelters` and
 `ShelterAbuseReports` tables from `AddShelters` are created before smoke testing
 the public and moderator flows.
+
+### Automated social-media ingestion
+
+The API exposes a separate, key-protected ingestion surface for structured data
+extracted by an external AI process. It does not accept Turnstile tokens and it
+cannot approve or create official records. Imported collection points, blood
+donation centers, shelters, and help requests are created as **No verificado**
+with `Automated` source status and remain subject to normal moderation.
+
+Configure the key as an Aspire secret:
+
+```powershell
+aspire param set ingestion-api-key "<random-32-byte-value>" --environment Production
+```
+
+Use the public Web relay and send both headers. Never place the key in a URL or
+commit it:
+
+```http
+POST https://terremoto.com.co/api/ingestion/v1/blood-donation-centers
+X-Ingestion-Api-Key: <ingestion-api-key>
+Idempotency-Key: <unique-key-for-the-source-post>
+Content-Type: application/json
+```
+
+Available paths are `/collection-points`, `/blood-donation-centers`,
+`/shelters`, and `/help-requests`. Every request must include a public HTTPS
+source URL, extraction confidence, and structured entity data. Repeating an
+`Idempotency-Key` returns the original submission instead of creating a second
+record. The API resolves the active earthquake server-side and rejects imports
+when no active earthquake exists.
+
+After deployment, run the migration Container App Job before sending imports.
+Review automated entries through the existing moderator pages and verify the
+original source before approving them.

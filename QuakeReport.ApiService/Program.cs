@@ -1,8 +1,11 @@
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Ingestion;
 using QuakeReport.Data;
 using Scalar.AspNetCore;
+using System.Security.Cryptography;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +25,20 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+    options.AddPolicy("ingestion", context =>
+    {
+        var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var supplied = context.Request.Headers["X-Ingestion-Api-Key"].ToString();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(supplied)));
+        return System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            $"{ip}:{fingerprint}",
+            _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            });
+    });
 });
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
@@ -39,6 +56,7 @@ builder.Services.AddScoped<IMediaStorage, AzureBlobMediaStorage>();
 builder.Services.AddScoped<MissingPersonSecurity>();
 builder.Services.AddScoped<ITurnstileValidator, TurnstileValidator>();
 builder.Services.AddScoped<IMissingPersonPhotoStorage, MissingPersonPhotoStorage>();
+builder.Services.AddSingleton<IIngestionApiKeyValidator, IngestionApiKeyValidator>();
 
 var app = builder.Build();
 

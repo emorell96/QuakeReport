@@ -27,6 +27,8 @@ var turnstileSiteKey = builder.AddParameter("turnstile-site-key");
 var turnstileSecretKey = builder.AddParameter("turnstile-secret-key", secret: true);
 // Example shape: a long random value such as development-only-moderation-api-key
 var moderationApiKey = builder.AddParameter("moderation-api-key", secret: true);
+// Example shape: a random 32-byte Base64 or hexadecimal value
+var ingestionApiKey = builder.AddParameter("ingestion-api-key", secret: true);
 // Example: development.cloudflareaccess.com (do not include https:// or a trailing slash)
 var cloudflareAccessTeamDomain = builder.AddParameter("cloudflare-access-team-domain");
 // Example shape: development-audience
@@ -106,6 +108,7 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
     .WithEnvironment("MissingPeople__IdHmacKey", missingPersonIdHmacKey)
     .WithEnvironment("Turnstile__SecretKey", turnstileSecretKey)
     .WithEnvironment("Moderation__ApiKey", moderationApiKey)
+    .WithEnvironment("Ingestion__ApiKey", ingestionApiKey)
     .PublishAsAzureContainerApp((_, app) =>
     {
         app.Template.Scale.MinReplicas = 0;
