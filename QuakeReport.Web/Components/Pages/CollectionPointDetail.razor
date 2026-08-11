@@ -10,7 +10,7 @@ else
     <MudPaper Class="pa-4 mt-4">
         <MudText Typo="Typo.h4">@_point.Name</MudText>
         <MudText>@_point.Address</MudText>
-        <MudButton Href="@_point.GoogleMapsUrl" Target="_blank" Class="mt-2" Variant="Variant.Outlined">Abrir en Google Maps</MudButton>
+        <MudButton Href="@_point.GoogleMapsUrl" Target="_blank" Class="mt-2 responsive-primary-action" Variant="Variant.Outlined">Abrir en Google Maps</MudButton>
         @if (_point.ModerationStatus == CollectionPointModerationStatus.Pending) { <MudAlert Severity="Severity.Warning" Class="mt-3">Este centro aún no ha sido verificado.</MudAlert> }
         <MudText Typo="Typo.h6" Class="mt-4">Necesidades actuales</MudText><MudText>@_point.NeedsSummary</MudText>
         <MudText Typo="Typo.h6" Class="mt-4">Recepción y horarios</MudText><MudText>@_point.ReceivingInstructions</MudText>

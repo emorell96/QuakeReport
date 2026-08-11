@@ -14,7 +14,7 @@ else if (_person is null)
 }
 else
 {
-    <MudStack Row="true" Spacing="2">
+    <MudStack Row="true" Spacing="2" Class="responsive-actions">
         <MudButton Href="/missing-people" StartIcon="@Icons.Material.Filled.ArrowBack">Volver</MudButton>
         <MudButton Href="@($"/missing-people/{Id}/manage")" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit">Editar registro</MudButton>
     </MudStack>

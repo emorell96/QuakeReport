@@ -2,13 +2,13 @@
 @inject QuakeReportApiClient ApiClient
 
 <PageTitle>Centros de acopio - Terremoto.com.co</PageTitle>
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h5">Centros de acopio</MudText>
     <MudButton Href="/collection-points/new" Variant="Variant.Filled" Color="Color.Primary">Registrar centro</MudButton>
 </MudStack>
 <MudPaper Class="pa-4 mb-4">
     <MudTextField Label="Buscar por nombre, dirección o necesidad" @bind-Value="_query" />
-    <MudStack Row="true" Spacing="2" Class="mt-2">
+    <MudStack Row="true" Spacing="2" Class="mt-2 responsive-row">
         <MudSelect T="CollectionPointOperationalStatus?" Label="Estado" @bind-Value="_status" Clearable="true">
             <MudSelectItem T="CollectionPointOperationalStatus?" Value="@((CollectionPointOperationalStatus?)null)">Abiertos y llenos</MudSelectItem>
             <MudSelectItem T="CollectionPointOperationalStatus?" Value="@((CollectionPointOperationalStatus?)CollectionPointOperationalStatus.Open)">Abiertos</MudSelectItem>
@@ -46,7 +46,7 @@ else
                         <MudText Class="mt-2">@point.Address</MudText>
                         <MudText Typo="Typo.body2"><strong>Necesidades:</strong> @point.NeedsSummary</MudText>
                         @if (point.IsExpired) { <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">La fecha indicada ya pasó; confirma antes de ir.</MudAlert> }
-                        <MudStack Row="true" Spacing="1" Class="mt-2">
+                        <MudStack Row="true" Spacing="1" Class="mt-2 responsive-actions">
                             <MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small">Ver detalles</MudButton>
                             <MudButton Href="@point.GoogleMapsUrl" Target="_blank" Size="Size.Small">Google Maps</MudButton>
                         </MudStack>

@@ -13,7 +13,7 @@ else if (_report is null)
 }
 else
 {
-    <MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudStack Row="true" Spacing="2" Class="mb-4 responsive-row">
         <MudChip T="string" Color="@DisplayHelpers.SeverityColor(_report.Severity)">@_report.Severity.ToDisplayString()</MudChip>
         @if (_report.StructureType is not null)
         {
