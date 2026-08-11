@@ -1,2 +1,2 @@
 namespace QuakeReport.Contracts.Enums;
-public enum BloodDonationSource { Community, Official }
+public enum BloodDonationSource { Community, Official, Automated }

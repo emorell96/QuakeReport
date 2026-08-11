@@ -25,6 +25,7 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
     public DbSet<BloodDonationCenter> BloodDonationCenters => Set<BloodDonationCenter>();
     public DbSet<BloodDonationCenterComment> BloodDonationCenterComments => Set<BloodDonationCenterComment>();
     public DbSet<BloodDonationCenterAbuseReport> BloodDonationCenterAbuseReports => Set<BloodDonationCenterAbuseReport>();
+    public DbSet<IngestionSubmission> IngestionSubmissions => Set<IngestionSubmission>();
 
     /// <summary>
     /// The single event this MVP currently reports against. Referenced by the
@@ -233,5 +234,17 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
         });
         modelBuilder.Entity<BloodDonationCenterComment>(entity => { entity.Property(e => e.DisplayName).HasMaxLength(100); entity.Property(e => e.Message).HasMaxLength(2000).IsRequired(); entity.HasIndex(e => new { e.BloodDonationCenterId, e.CreatedAt }); entity.HasOne(e => e.BloodDonationCenter).WithMany(e => e.Comments).HasForeignKey(e => e.BloodDonationCenterId).OnDelete(DeleteBehavior.Cascade); });
         modelBuilder.Entity<BloodDonationCenterAbuseReport>(entity => { entity.Property(e => e.Reason).HasMaxLength(200).IsRequired(); entity.Property(e => e.Details).HasMaxLength(2000); entity.HasIndex(e => new { e.BloodDonationCenterId, e.CreatedAt }); entity.HasOne(e => e.BloodDonationCenter).WithMany(e => e.AbuseReports).HasForeignKey(e => e.BloodDonationCenterId).OnDelete(DeleteBehavior.Cascade); });
+
+        modelBuilder.Entity<IngestionSubmission>(entity =>
+        {
+            entity.Property(e => e.SourceUrl).HasMaxLength(2000).IsRequired();
+            entity.Property(e => e.ExternalPostId).HasMaxLength(300);
+            entity.Property(e => e.IdempotencyKeyHash).HasMaxLength(64).IsRequired();
+            entity.Property(e => e.EvidenceSummary).HasMaxLength(1000);
+            entity.HasIndex(e => new { e.EntityType, e.IdempotencyKeyHash }).IsUnique();
+            entity.HasIndex(e => new { e.EntityType, e.Platform, e.ExternalPostId }).IsUnique().HasFilter("\"ExternalPostId\" IS NOT NULL");
+            entity.HasIndex(e => new { e.EarthquakeId, e.CreatedAt });
+            entity.HasOne(e => e.Earthquake).WithMany().HasForeignKey(e => e.EarthquakeId).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 }
