@@ -6,58 +6,34 @@ using Azure.Provisioning.Storage;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-var existingEnvironmentName = builder.AddParameter(
-    "existing-aca-environment-name",
-    "quakereportenvyksjkeaewt",
-    publishValueAsDefault: true);
-var existingEnvironmentResourceGroup = builder.AddParameter(
-    "existing-aca-environment-resource-group",
-    "rg-terremoto-prod",
-    publishValueAsDefault: true);
+// Example: quakereportenvyksjkeaewt
+var existingEnvironmentName = builder.AddParameter("existing-aca-environment-name");
+// Example: rg-terremoto-prod
+var existingEnvironmentResourceGroup = builder.AddParameter("existing-aca-environment-resource-group");
 
 builder.AddAzureContainerAppEnvironment("quake-report-env")
     .AsExisting(existingEnvironmentName, existingEnvironmentResourceGroup);
 
+// Example shape: AIzaSy... (Google Maps Platform API key)
 var googleMapsApiKey = builder.AddParameter("google-maps-api-key", secret: true);
-var missingPersonIdHmacKey = builder.AddParameter(
-    "missing-person-id-hmac-key",
-    "development-only-missing-person-id-hmac-key",
-    secret: true,
-    publishValueAsDefault: false);
-var turnstileSiteKey = builder.AddParameter(
-    "turnstile-site-key",
-    "1x00000000000000000000AA",
-    publishValueAsDefault: false);
-var turnstileSecretKey = builder.AddParameter(
-    "turnstile-secret-key",
-    "1x0000000000000000000000000000000AA",
-    secret: true,
-    publishValueAsDefault: false);
-var moderationApiKey = builder.AddParameter(
-    "moderation-api-key",
-    "development-only-moderation-api-key",
-    secret: true,
-    publishValueAsDefault: false);
-var cloudflareAccessTeamDomain = builder.AddParameter(
-    "cloudflare-access-team-domain",
-    "development.cloudflareaccess.com",
-    publishValueAsDefault: false);
-var cloudflareAccessAudience = builder.AddParameter(
-    "cloudflare-access-audience",
-    "development-audience",
-    publishValueAsDefault: false);
-var apexDomain = builder.AddParameter(
-    "apex-domain",
-    "terremoto.com.co",
-    publishValueAsDefault: true);
-var wwwDomain = builder.AddParameter(
-    "www-domain",
-    "www.terremoto.com.co",
-    publishValueAsDefault: true);
-var cloudflareCertificateId = builder.AddParameter(
-    "cloudflare-certificate-id",
-    "/subscriptions/80fb3496-88b6-4097-86c6-efbc21c21cfa/resourceGroups/rg-terremoto-prod/providers/Microsoft.App/managedEnvironments/quakereportenvyksjkeaewt/certificates/terremoto-cloudflare",
-    publishValueAsDefault: true);
+// Example shape: a long random value such as development-only-missing-person-id-hmac-key
+var missingPersonIdHmacKey = builder.AddParameter("missing-person-id-hmac-key", secret: true);
+// Example/test shape: 1x00000000000000000000AA
+var turnstileSiteKey = builder.AddParameter("turnstile-site-key");
+// Example/test shape: 1x0000000000000000000000000000000AA
+var turnstileSecretKey = builder.AddParameter("turnstile-secret-key", secret: true);
+// Example shape: a long random value such as development-only-moderation-api-key
+var moderationApiKey = builder.AddParameter("moderation-api-key", secret: true);
+// Example: development.cloudflareaccess.com (do not include https:// or a trailing slash)
+var cloudflareAccessTeamDomain = builder.AddParameter("cloudflare-access-team-domain");
+// Example shape: development-audience
+var cloudflareAccessAudience = builder.AddParameter("cloudflare-access-audience");
+// Example: terremoto.com.co
+var apexDomain = builder.AddParameter("apex-domain");
+// Example: www.terremoto.com.co
+var wwwDomain = builder.AddParameter("www-domain");
+// Example: /subscriptions/<subscription-id>/resourceGroups/rg-terremoto-prod/providers/Microsoft.App/managedEnvironments/quakereportenvyksjkeaewt/certificates/terremoto-cloudflare
+var cloudflareCertificateId = builder.AddParameter("cloudflare-certificate-id");
 
 var postgres = builder.AddAzurePostgresFlexibleServer("postgres")
     .RunAsContainer(container => container
