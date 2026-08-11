@@ -37,6 +37,9 @@ else
     </MudGrid>
 }
 
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row"><MudText Typo="Typo.h6">Donación de sangre</MudText><MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton></MudStack>
+@if (_bloodDonationCenters.Count == 0) { <MudAlert Severity="Severity.Info" Class="mb-6">No hay centros de donación abiertos publicados.</MudAlert> } else { <MudGrid Class="mb-6" Spacing="2">@foreach(var center in _bloodDonationCenters){<MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@center.Name</MudText>@if(center.ModerationStatus==BloodDonationModerationStatus.Pending){<MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>}<MudText Typo="Typo.body2">@center.Address</MudText><MudText Typo="Typo.body2">@BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText><MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton></MudCardContent></MudCard></MudItem>}</MudGrid> }
+
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Refugios</MudText>
     <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
@@ -194,6 +197,7 @@ else
     private IReadOnlyList<ShelterSummaryResponse> _shelters = [];
     private IReadOnlyList<MissingPersonSummaryResponse> _missingPeople = [];
     private IReadOnlyList<HelpRequestSummaryResponse> _helpRequests = [];
+    private IReadOnlyList<BloodDonationCenterSummaryResponse> _bloodDonationCenters = [];
     private EarthquakeResponse? _earthquake;
     private bool _loading = true;
     private SeverityLevel? _severityFilter;
@@ -226,8 +230,9 @@ else
             var collectionPointsTask = ApiClient.GetCollectionPointsAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var sheltersTask = ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var helpRequestsTask = ApiClient.GetHelpRequestsAsync(page: 1, pageSize: 6, sort: HelpRequestSortOption.HighestPriority, cancellationToken: cancellation.Token);
+            var bloodDonationTask = ApiClient.GetBloodDonationCentersAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
 
-            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, sheltersTask, collectionPointsTask, helpRequestsTask);
+            await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, sheltersTask, collectionPointsTask, helpRequestsTask, bloodDonationTask);
             if (!ReferenceEquals(_loadCancellation, cancellation))
             {
                 return;
@@ -242,6 +247,7 @@ else
             _shelters = (await sheltersTask).Items;
             _collectionPoints = (await collectionPointsTask).Items;
             _helpRequests = (await helpRequestsTask).Items;
+            _bloodDonationCenters = (await bloodDonationTask).Items;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
