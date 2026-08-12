@@ -5,10 +5,12 @@ using QuakeReport.ApiService.Ingestion;
 using QuakeReport.Data;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.Geospatial;
+using QuakeReport.Data.Geospatial;
 using Scalar.AspNetCore;
 using System.Security.Cryptography;
 using System.Text;
 
+PostGisTypeMapping.Configure();
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();

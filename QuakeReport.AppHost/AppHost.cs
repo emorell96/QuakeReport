@@ -101,9 +101,14 @@ var storage = builder.AddAzureStorage("storage")
 var reportMediaBlobs = storage.AddBlobs("blobs");
 var missingPersonBlobs = storage.AddBlobs("missing-person-media");
 
+// Jobs cannot use their own system-assigned identity while they are being
+// created: Azure attempts to resolve that principal before the job exists.
+// Stable user-assigned identities remove that circular provisioning dependency.
+var migrationServiceIdentity = builder.AddAzureUserAssignedIdentity("migrationservice-identity");
 var migrationService = builder.AddProject<Projects.QuakeReport_MigrationService>("migrationservice")
     .WithReference(quakeReportDb)
     .WaitFor(quakeReportDb)
+    .WithAzureUserAssignedIdentity(migrationServiceIdentity)
     .PublishAsAzureContainerAppJob();
 
 var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice")
@@ -125,11 +130,13 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
         app.Template.Scale.MaxReplicas = 3;
     });
 
+var geocodingWorkerIdentity = builder.AddAzureUserAssignedIdentity("geocodingworker-identity");
 var geocodingWorker = builder.AddProject<Projects.QuakeReport_GeocodingWorker>("geocodingworker")
     .WithReference(quakeReportDb)
     .WaitFor(quakeReportDb)
     .WaitForCompletion(migrationService)
     .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
+    .WithAzureUserAssignedIdentity(geocodingWorkerIdentity)
     .WithExplicitStart()
     .PublishAsAzureContainerAppJob();
 

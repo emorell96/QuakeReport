@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.Data;
+using QuakeReport.Data.Geospatial;
 using QuakeReport.GeocodingWorker;
 using QuakeReport.Geospatial;
 
+PostGisTypeMapping.Configure();
 var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 builder.AddAzureNpgsqlDbContext<QuakeReportDbContext>("quakereportdb",

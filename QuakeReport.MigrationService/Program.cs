@@ -1,7 +1,9 @@
 using QuakeReport.Data;
+using QuakeReport.Data.Geospatial;
 using QuakeReport.MigrationService;
 using Microsoft.EntityFrameworkCore;
 
+PostGisTypeMapping.Configure();
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
