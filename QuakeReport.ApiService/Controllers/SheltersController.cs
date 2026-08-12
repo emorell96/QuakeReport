@@ -32,11 +32,15 @@ public class SheltersController(
         [FromQuery] ShelterSortOption sort = ShelterSortOption.Newest,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = DefaultPageSize,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromQuery] double? latitude = null,
+        [FromQuery] double? longitude = null)
     {
         if (page < 1 || pageSize is < 1 or > MaxPageSize || !Enum.IsDefined(sort) ||
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
-            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)))
+            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
+            (latitude.HasValue != longitude.HasValue) ||
+            (latitude.HasValue && !GeographicDistance.IsValid(latitude.Value, longitude!.Value)))
             return BadRequest("Invalid shelter query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
@@ -52,6 +56,17 @@ public class SheltersController(
         {
             var normalized = NormalizeSearch(query);
             shelters = shelters.Where(shelter => shelter.SearchText!.Contains(normalized));
+        }
+
+        if (latitude.HasValue)
+        {
+            var candidates = await shelters.Where(shelter => shelter.Latitude != null && shelter.Longitude != null).ToListAsync(cancellationToken);
+            var nearest = candidates
+                .OrderBy(shelter => GeographicDistance.Kilometers(latitude.Value, longitude!.Value, shelter.Latitude!.Value, shelter.Longitude!.Value))
+                .ThenBy(shelter => shelter.Id)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(shelter => shelter.ToSummaryResponse()).ToList();
+            return Ok(new PagedResponse<ShelterSummaryResponse>(nearest, page, pageSize, candidates.Count, (int)Math.Ceiling(candidates.Count / (double)pageSize)));
         }
 
         var total = await shelters.CountAsync(cancellationToken);
