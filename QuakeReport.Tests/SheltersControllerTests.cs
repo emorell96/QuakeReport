@@ -97,7 +97,7 @@ public class SheltersControllerTests
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build());
 
     private static CreateShelterRequest CreateRequest(string name) =>
-        new(name, null, "Calle 1", 3.45, -76.53, "Descripción", "Abierto todo el día", null, null, null, null, "token");
+        new(name, null, "Calle 1", 3.45, -76.53, "Descripción", "Abierto todo el día", null, null, null, null, true, "token");
 
     private static Shelter TestShelter(string name, ShelterModerationStatus moderation, ShelterOperationalStatus operational) => new()
     {

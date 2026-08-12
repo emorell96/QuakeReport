@@ -223,7 +223,7 @@ public class CollectionPointsController(
     {
         point.Name = request.Name.Trim(); point.OrganizationName = request.OrganizationName?.Trim(); point.Address = request.Address.Trim(); point.Latitude = request.Latitude; point.Longitude = request.Longitude; point.Description = request.Description?.Trim(); point.NeedsSummary = request.NeedsSummary.Trim(); point.ReceivingInstructions = request.ReceivingInstructions.Trim(); point.ContactName = request.ContactName?.Trim(); point.ContactPhone = request.ContactPhone?.Trim(); point.ContactWhatsApp = request.ContactWhatsApp?.Trim(); point.ContactEmail = request.ContactEmail?.Trim(); point.EndsAt = request.EndsAt; point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary)); point.UpdatedAt = DateTimeOffset.UtcNow;
     }
-    private static string? Validate(CreateCollectionPointRequest request) => ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
+    private static string? Validate(CreateCollectionPointRequest request) => !request.PrivacyConsent ? "Privacy consent is required." : ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
     private static string? Validate(UpdateCollectionPointRequest request) => ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
     private static string? ValidateCore(string name, string address, string needs, string instructions, DateTimeOffset? endsAt)
     {

@@ -1,0 +1,10 @@
+<MudCheckBox T="bool" Value="Value" ValueChanged="ValueChanged" Required="true"
+             RequiredError="Debes aceptar la política de tratamiento de datos.">
+    <span>@Label <MudLink Href="/privacidad" Target="_blank">Política de Tratamiento de Datos Personales y Privacidad</MudLink>.</span>
+</MudCheckBox>
+
+@code {
+    [Parameter] public bool Value { get; set; }
+    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
+    [Parameter] public string Label { get; set; } = "Acepto la";
+}

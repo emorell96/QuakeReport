@@ -44,7 +44,7 @@
         }
         <MudButton Class="mt-2" OnClick="AddLocation" StartIcon="@Icons.Material.Filled.Add">Agregar dirección</MudButton>
     </MudPaper>
-    <MudCheckBox T="bool" @bind-Value="_consent" Label="Confirmo que tengo autorización para publicar esta información y fotografía." />
+    <PrivacyConsent @bind-Value="_consent" Label="Confirmo que tengo autorización para publicar esta información y fotografía y acepto la" />
     <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstileToken" />
     <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Disabled="_saving">Registrar</MudButton>
 </MudForm>

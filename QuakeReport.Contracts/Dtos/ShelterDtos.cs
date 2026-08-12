@@ -18,7 +18,7 @@ public record ShelterResponse(
 public record CreateShelterRequest(
     string Name, string? OrganizationName, string Address, double? Latitude, double? Longitude,
     string Description, string OperatingInstructions, string? ContactName, string? ContactPhone,
-    string? ContactWhatsApp, string? ContactEmail, string TurnstileToken);
+    string? ContactWhatsApp, string? ContactEmail, bool PrivacyConsent, string TurnstileToken);
 
 public record UpdateShelterRequest(
     string Name, string? OrganizationName, string Address, double? Latitude, double? Longitude,

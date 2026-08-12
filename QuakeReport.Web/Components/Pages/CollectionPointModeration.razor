@@ -47,7 +47,7 @@
             _officialError = null;
             var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var email = state.User.FindFirst("email")?.Value ?? state.User.Identity?.Name;
-            await ApiClient.CreateOfficialCollectionPointAsync(new(_officialName ?? "", null, _officialAddress ?? "", null, null, null, _officialNeeds ?? "", _officialInstructions ?? "", null, null, null, null, null, ""), email);
+            await ApiClient.CreateOfficialCollectionPointAsync(new(_officialName ?? "", null, _officialAddress ?? "", null, null, null, _officialNeeds ?? "", _officialInstructions ?? "", null, null, null, null, null, true, ""), email);
             _officialName = _officialAddress = _officialNeeds = _officialInstructions = null;
             await LoadAsync();
         }
