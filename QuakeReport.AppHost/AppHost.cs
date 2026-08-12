@@ -45,7 +45,7 @@ var cloudflareCertificateId = builder.AddParameter(
 
 var postgres = builder.AddAzurePostgresFlexibleServer("postgres")
     .RunAsContainer(container => container
-        .WithImage("postgis/postgis", "16-3.6")
+        .WithImage("postgis/postgis", "17-3.6-alpine")
         .WithDataVolume()
         .WithLifetime(ContainerLifetime.Persistent))
     .ConfigureInfrastructure(infrastructure =>
