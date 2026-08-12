@@ -447,6 +447,7 @@ public class ReportsControllerTests
             Latitude = 4.5709,
             Longitude = -74.2973,
             Address = "Main Street",
+            PrivacyConsent = true,
         };
 
     private static UploadReportMediaRequest CreateUploadRequest(

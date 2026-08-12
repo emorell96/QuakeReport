@@ -24,7 +24,7 @@ public record CreateCollectionPointRequest(
     string Name, string? OrganizationName, string Address, double? Latitude, double? Longitude,
     string? Description, string NeedsSummary, string ReceivingInstructions, string? ContactName,
     string? ContactPhone, string? ContactWhatsApp, string? ContactEmail, DateTimeOffset? EndsAt,
-    string TurnstileToken);
+    bool PrivacyConsent, string TurnstileToken);
 
 public record UpdateCollectionPointRequest(
     string Name, string? OrganizationName, string Address, double? Latitude, double? Longitude,

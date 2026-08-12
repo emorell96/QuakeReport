@@ -15,6 +15,7 @@
     <MudTextField Label="Teléfono" @bind-Value="_phone" />
     <MudTextField Label="WhatsApp" @bind-Value="_whatsapp" />
     <MudTextField Label="Correo" @bind-Value="_email" />
+    <PrivacyConsent @bind-Value="_consent" />
     <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile" />
     <MudButton Class="mt-4 responsive-primary-action" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Registrar refugio</MudButton>
     @if (_code is not null) { <MudAlert Severity="Severity.Warning" Class="mt-4">Guarda este código de administración; se muestra una sola vez: <strong>@_code</strong></MudAlert> }
@@ -23,13 +24,13 @@
 
 @code {
     private string? _name, _organization, _address, _description, _instructions, _contactName, _phone, _whatsapp, _email, _turnstile, _code, _error;
-    private double? _latitude, _longitude; private bool _saving;
+    private double? _latitude, _longitude; private bool _consent, _saving;
     private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
     private void ClearCoordinates() { _latitude = null; _longitude = null; }
     private async Task SubmitAsync()
     {
         _saving = true; _error = null;
-        try { var response = await ApiClient.CreateShelterAsync(new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email, _turnstile ?? "")); _code = response.ManagementCode; }
+        try { if (!_consent) throw new InvalidOperationException("Debes aceptar la política de tratamiento de datos."); var response = await ApiClient.CreateShelterAsync(new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email, _consent, _turnstile ?? "")); _code = response.ManagementCode; }
         catch (Exception exception) { _error = exception.Message; }
         finally { _saving = false; }
     }

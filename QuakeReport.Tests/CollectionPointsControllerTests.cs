@@ -96,7 +96,7 @@ public class CollectionPointsControllerTests
         new AlwaysTurnstile(),
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build());
 
-    private static CreateCollectionPointRequest Request(string name) => new(name, null, "Calle 1, Cali", null, null, null, "Agua y alimentos", "Recibir de 8 a 5", null, null, null, null, null, "ok");
+    private static CreateCollectionPointRequest Request(string name) => new(name, null, "Calle 1, Cali", null, null, null, "Agua y alimentos", "Recibir de 8 a 5", null, null, null, null, null, true, "ok");
 
     private static CollectionPoint Point(Guid earthquakeId, string name, CollectionPointModerationStatus moderation, CollectionPointOperationalStatus operational) => new()
     {

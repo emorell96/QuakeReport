@@ -17,20 +17,22 @@
     <MudTextField Label="WhatsApp" @bind-Value="_whatsapp" />
     <MudTextField Label="Correo" @bind-Value="_email" />
     <MudDatePicker Label="Fecha de cierre prevista (opcional)" @bind-Date="_endsAt" />
+    <PrivacyConsent @bind-Value="_consent" />
     <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstile" />
     <MudButton Class="mt-4 responsive-primary-action" Variant="Variant.Filled" OnClick="SubmitAsync" Disabled="_saving">Registrar</MudButton>
     @if (_code is not null) { <MudAlert Severity="Severity.Warning" Class="mt-4">Guarda este código de administración; se muestra una sola vez: <strong>@_code</strong></MudAlert> }
     @if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert> }
 </MudPaper>
 @code {
-    private string? _name, _organization, _address, _needs, _instructions, _description, _contactName, _phone, _whatsapp, _email, _turnstile, _code, _error; private double? _latitude, _longitude; private DateTime? _endsAt; private bool _saving;
+    private string? _name, _organization, _address, _needs, _instructions, _description, _contactName, _phone, _whatsapp, _email, _turnstile, _code, _error; private double? _latitude, _longitude; private DateTime? _endsAt; private bool _consent, _saving;
     private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
     private async Task SubmitAsync()
     {
         _saving = true; _error = null;
         try
         {
-            var result = await ApiClient.CreateCollectionPointAsync(new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description, _needs ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email, _endsAt is null ? null : new DateTimeOffset(DateTime.SpecifyKind(_endsAt.Value, DateTimeKind.Unspecified), TimeSpan.Zero), _turnstile ?? ""));
+            if (!_consent) throw new InvalidOperationException("Debes aceptar la política de tratamiento de datos.");
+            var result = await ApiClient.CreateCollectionPointAsync(new(_name ?? "", _organization, _address ?? "", _latitude, _longitude, _description, _needs ?? "", _instructions ?? "", _contactName, _phone, _whatsapp, _email, _endsAt is null ? null : new DateTimeOffset(DateTime.SpecifyKind(_endsAt.Value, DateTimeKind.Unspecified), TimeSpan.Zero), _consent, _turnstile ?? ""));
             _code = result.ManagementCode;
         }
         catch (Exception exception) { _error = exception.Message; }

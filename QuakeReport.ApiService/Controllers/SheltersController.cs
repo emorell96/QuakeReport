@@ -253,7 +253,7 @@ public class SheltersController(
     }
 
     private static string? Validate(CreateShelterRequest request) =>
-        ValidateCore(request.Name, request.Address, request.Description, request.OperatingInstructions);
+        !request.PrivacyConsent ? "Privacy consent is required." : ValidateCore(request.Name, request.Address, request.Description, request.OperatingInstructions);
     private static string? Validate(UpdateShelterRequest request) =>
         ValidateCore(request.Name, request.Address, request.Description, request.OperatingInstructions);
     private static string? ValidateCore(string name, string address, string description, string instructions)

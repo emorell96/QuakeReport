@@ -26,4 +26,6 @@ public class CreateDamageReportRequest
 
     [MaxLength(300)]
     public string? Address { get; set; }
+
+    public bool PrivacyConsent { get; set; }
 }

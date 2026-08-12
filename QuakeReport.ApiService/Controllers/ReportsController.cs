@@ -123,6 +123,11 @@ public class ReportsController(
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
     public async Task<IActionResult> Create(CreateDamageReportRequest request, CancellationToken cancellationToken)
     {
+        if (!request.PrivacyConsent)
+        {
+            return BadRequest("Privacy consent is required.");
+        }
+
         var activeEarthquake = await activeEarthquakeService.GetActiveEarthquakeAsync(cancellationToken);
         if (activeEarthquake is null)
         {
