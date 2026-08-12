@@ -90,6 +90,28 @@ public class CollectionPointsControllerTests
         StringAssert.Contains(addressResponse.GoogleMapsUrl, "google.com/maps/search/?api=1&query=");
     }
 
+    [TestMethod]
+    public async Task ListWithUserLocationReturnsNearestGeocodedPointFirst()
+    {
+        using var db = TestDb.Create();
+        var earthquakeId = QuakeReportDbContext.ColombiaEarthquakeId;
+        var nearby = Point(earthquakeId, "Cerca", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
+        nearby.Latitude = 3.4516;
+        nearby.Longitude = -76.5320;
+        var farAway = Point(earthquakeId, "Lejos", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
+        farAway.Latitude = 4.7110;
+        farAway.Longitude = -74.0721;
+        var withoutCoordinates = Point(earthquakeId, "Sin coordenadas", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
+        db.CollectionPoints.AddRange(farAway, withoutCoordinates, nearby);
+        await db.SaveChangesAsync();
+
+        var result = await Controller(db).List(pageSize: 1, cancellationToken: CancellationToken.None, latitude: 3.45, longitude: -76.53);
+        var page = TestAssert.InstanceOf<PagedResponse<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
+
+        Assert.AreEqual(2, page.TotalCount);
+        Assert.AreEqual("Cerca", page.Items.Single().Name);
+    }
+
     private static CollectionPointsController Controller(QuakeReportDbContext db) => new(
         db,
         new ActiveEarthquakeService(db),

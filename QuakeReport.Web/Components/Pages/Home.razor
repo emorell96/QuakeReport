@@ -1,5 +1,7 @@
 @page "/"
 @inject QuakeReportApiClient ApiClient
+@inject GeolocationService Geolocation
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <PageTitle>Terremoto.com.co</PageTitle>
@@ -39,12 +41,12 @@ else
     </MudGrid>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row"><MudText Typo="Typo.h6">Donación de sangre</MudText><MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/donacion-sangre/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Bloodtype">Registrar centro</MudButton><MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton></MudStack></MudStack>
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row"><MudText Typo="Typo.h6">Donación de sangre</MudText><MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/donacion-sangre/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Bloodtype">Registrar centro</MudButton><MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton><MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MyLocation" Disabled="@(_findingNearest is not null)" OnClick="@(() => FindNearestAsync(NearestKind.BloodDonationCenter))">Encontrar el más cercano</MudButton></MudStack></MudStack>
 @if (_bloodDonationCenters.Count == 0) { <MudAlert Severity="Severity.Info" Class="mb-6">No hay centros de donación abiertos publicados.</MudAlert> } else { <MudGrid Class="mb-6" Spacing="2">@foreach(var center in _bloodDonationCenters){<MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@center.Name</MudText>@if(center.ModerationStatus==BloodDonationModerationStatus.Pending){<MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>}<MudText Typo="Typo.body2">@center.Address</MudText><MudText Typo="Typo.body2">@BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText><MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton></MudCardContent></MudCard></MudItem>}</MudGrid> }
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Refugios</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/refugios/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.HomeWork">Registrar refugio</MudButton><MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton></MudStack>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/refugios/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.HomeWork">Registrar refugio</MudButton><MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton><MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MyLocation" Disabled="@(_findingNearest is not null)" OnClick="@(() => FindNearestAsync(NearestKind.Shelter))">Encontrar el más cercano</MudButton></MudStack>
 </MudStack>
 @if (_shelters.Count == 0)
 {
@@ -95,7 +97,7 @@ else
 
 <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
     <MudText Typo="Typo.h6">Centros de acopio</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/collection-points/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.VolunteerActivism">Registrar centro</MudButton><MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton></MudStack>
+    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/collection-points/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.VolunteerActivism">Registrar centro</MudButton><MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton><MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MyLocation" Disabled="@(_findingNearest is not null)" OnClick="@(() => FindNearestAsync(NearestKind.CollectionPoint))">Encontrar el más cercano</MudButton></MudStack>
 </MudStack>
 @if (_collectionPoints.Count == 0)
 {
@@ -206,6 +208,7 @@ else
     private int _totalCount;
     private int _totalPages;
     private CancellationTokenSource? _loadCancellation;
+    private NearestKind? _findingNearest;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -284,6 +287,49 @@ else
     private void NavigateToReport(Guid id) => Navigation.NavigateTo($"/report/{id}");
     private void NavigateToMissingPerson(Guid id) => Navigation.NavigateTo($"/missing-people/{id}");
     private static Color HelpPriorityColor(HelpRequestPriority priority) => priority switch { HelpRequestPriority.Critical => Color.Error, HelpRequestPriority.High => Color.Warning, _ => Color.Info };
+
+    private async Task FindNearestAsync(NearestKind kind)
+    {
+        _findingNearest = kind;
+        try
+        {
+            var location = await Geolocation.GetCurrentPositionAsync();
+            if (location is not GeolocationResult.Success position)
+            {
+                var reason = ((GeolocationResult.Failure)location).Reason;
+                Snackbar.Add(reason switch
+                {
+                    GeolocationFailureReason.Denied => "Necesitamos permiso para acceder a tu ubicación.",
+                    GeolocationFailureReason.Timeout => "No pudimos obtener tu ubicación a tiempo. Inténtalo de nuevo.",
+                    GeolocationFailureReason.Unsupported => "Tu navegador no admite servicios de ubicación.",
+                    _ => "Tu ubicación no está disponible en este momento.",
+                }, Severity.Warning);
+                return;
+            }
+
+            string? destination = kind switch
+            {
+                NearestKind.BloodDonationCenter => (await ApiClient.GetBloodDonationCentersAsync(pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Items.FirstOrDefault() is { } center ? $"/donacion-sangre/{center.Id}" : null,
+                NearestKind.Shelter => (await ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Items.FirstOrDefault() is { } shelter ? $"/refugios/{shelter.Id}" : null,
+                _ => (await ApiClient.GetCollectionPointsAsync(operationalStatus: CollectionPointOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Items.FirstOrDefault() is { } point ? $"/collection-points/{point.Id}" : null,
+            };
+
+            if (destination is null)
+                Snackbar.Add("No hay lugares abiertos con coordenadas disponibles.", Severity.Info);
+            else
+                Navigation.NavigateTo(destination);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add("No pudimos buscar el lugar más cercano. Inténtalo de nuevo.", Severity.Error);
+        }
+        finally
+        {
+            _findingNearest = null;
+        }
+    }
+
+    private enum NearestKind { BloodDonationCenter, Shelter, CollectionPoint }
 
     [Inject]
     private NavigationManager Navigation { get; set; } = default!;

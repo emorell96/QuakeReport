@@ -30,11 +30,14 @@ public class CollectionPointsController(
         [FromQuery] CollectionPointModerationStatus? moderationStatus = null,
         [FromQuery] CollectionPointSortOption sort = CollectionPointSortOption.Newest,
         [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        [FromQuery] double? latitude = null, [FromQuery] double? longitude = null)
     {
         if (page < 1 || pageSize is < 1 or > MaxPageSize || !Enum.IsDefined(sort) ||
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
-            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)))
+            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
+            (latitude.HasValue != longitude.HasValue) ||
+            (latitude.HasValue && !GeographicDistance.IsValid(latitude.Value, longitude!.Value)))
             return BadRequest("Invalid collection-point query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
@@ -48,6 +51,17 @@ public class CollectionPointsController(
         {
             var normalized = NormalizeSearch(query);
             points = points.Where(point => point.SearchText!.Contains(normalized));
+        }
+
+        if (latitude.HasValue)
+        {
+            var candidates = await points.Where(point => point.Latitude != null && point.Longitude != null).ToListAsync(cancellationToken);
+            var nearest = candidates
+                .OrderBy(point => GeographicDistance.Kilometers(latitude.Value, longitude!.Value, point.Latitude!.Value, point.Longitude!.Value))
+                .ThenBy(point => point.Id)
+                .Skip((page - 1) * pageSize).Take(pageSize)
+                .Select(point => point.ToSummaryResponse()).ToList();
+            return Ok(new PagedResponse<CollectionPointSummaryResponse>(nearest, page, pageSize, candidates.Count, (int)Math.Ceiling(candidates.Count / (double)pageSize)));
         }
 
         var total = await points.CountAsync(cancellationToken);
