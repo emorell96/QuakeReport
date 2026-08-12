@@ -5,47 +5,64 @@
 <PageTitle>Registrar persona extraviada - Terremoto.com.co</PageTitle>
 <MudText Typo="Typo.h5" Class="mb-4">Registrar persona extraviada</MudText>
 
-<MudForm @ref="_form">
+<MudForm @ref="_form" Model="_model" Validation="_validator.ValidateValue">
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">Información de la persona</MudText>
-        <MudTextField Label="Nombre completo*" @bind-Value="_name" Required="true" />
-        <MudTextField Label="Alias u otros nombres" @bind-Value="_aliases" />
-        <MudTextField Label="Edad aproximada" @bind-Value="_age" />
-        <MudSelect T="IdentificationDocumentType?" Label="Tipo de documento" @bind-Value="_documentType" Clearable="true">
+        <MudTextField Label="Nombre completo*" @bind-Value="_model.FullName" For="@(() => _model.FullName)" />
+        <MudTextField Label="Alias u otros nombres" @bind-Value="_model.Aliases" For="@(() => _model.Aliases)" />
+        <MudTextField Label="Edad aproximada" @bind-Value="_model.ApproximateAge" For="@(() => _model.ApproximateAge)" />
+        <MudSelect T="IdentificationDocumentType?" Label="Tipo de documento" @bind-Value="_model.IdentificationDocumentType"
+                   For="@(() => _model.IdentificationDocumentType)" Clearable="true">
             <MudSelectItem T="IdentificationDocumentType?" Value="@((IdentificationDocumentType?)IdentificationDocumentType.ColombianCitizenId)">Cédula</MudSelectItem>
             <MudSelectItem T="IdentificationDocumentType?" Value="@((IdentificationDocumentType?)IdentificationDocumentType.IdentityCard)">Tarjeta de identidad</MudSelectItem>
             <MudSelectItem T="IdentificationDocumentType?" Value="@((IdentificationDocumentType?)IdentificationDocumentType.CivilRegistry)">Registro civil</MudSelectItem>
             <MudSelectItem T="IdentificationDocumentType?" Value="@((IdentificationDocumentType?)IdentificationDocumentType.ForeignerId)">Cédula de extranjería</MudSelectItem>
             <MudSelectItem T="IdentificationDocumentType?" Value="@((IdentificationDocumentType?)IdentificationDocumentType.Passport)">Pasaporte</MudSelectItem>
         </MudSelect>
-        <MudTextField Label="Número de documento (opcional)" @bind-Value="_documentNumber" />
-        <MudDatePicker Label="Fecha del último avistamiento" @bind-Date="_lastSeenDate" />
-        <MudTextField Label="Descripción*" Lines="4" @bind-Value="_description" Required="true" />
-        <MudTextField Label="Descripción física" Lines="3" @bind-Value="_physical" />
-        <MudTextField Label="Ropa u otros detalles" Lines="3" @bind-Value="_clothing" />
+        <MudTextField Label="Número de documento (opcional)" @bind-Value="_model.IdentificationNumber" For="@(() => _model.IdentificationNumber)" />
+        <MudDatePicker Label="Fecha del último avistamiento" @bind-Date="_model.LastSeenAt" For="@(() => _model.LastSeenAt)" />
+        <MudTextField Label="Descripción*" Lines="4" @bind-Value="_model.Description" For="@(() => _model.Description)" />
+        <MudTextField Label="Descripción física" Lines="3" @bind-Value="_model.PhysicalDescription" For="@(() => _model.PhysicalDescription)" />
+        <MudTextField Label="Ropa u otros detalles" Lines="3" @bind-Value="_model.ClothingDescription" For="@(() => _model.ClothingDescription)" />
     </MudPaper>
+
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">Fotografía de la persona (opcional)</MudText>
         <InputFile OnChange="OnPhotoSelected" accept="image/jpeg,image/png,image/webp" />
         <MudText Typo="Typo.caption">JPEG, PNG o WebP. Tamaño máximo: 10 MB.</MudText>
-        @if (_photoError is not null) { <MudAlert Severity="Severity.Error" Class="mt-2">@_photoError</MudAlert> }
-        @if (_photo is not null) { <MudText Typo="Typo.body2" Class="mt-2">Archivo seleccionado: @_photo.Name</MudText> }
+        @if (_photoError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@_photoError</MudAlert>
+        }
+        @if (_model.Photo is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">Archivo seleccionado: @_model.Photo.Name</MudText>
+        }
     </MudPaper>
+
     <MudPaper Class="pa-4 mb-4">
         <MudText Typo="Typo.h6">Posibles ubicaciones*</MudText>
-        @foreach (var location in _locations.Select((value, index) => (value, index)))
+        @foreach (var location in _model.Locations.Select((value, index) => (value, index)))
         {
-            <AddressSearch @bind-Address="location.value.Address"
-                           Latitude="location.value.Latitude"
-                           Longitude="location.value.Longitude"
-                           OnPlaceSelected="@(details => SetLocation(location.value, details))" />
-            <MudTextField Label="Nota" @bind-Value="location.value.Note" />
-            @if (_locations.Count > 1) { <MudButton OnClick="@(() => _locations.RemoveAt(location.index))">Eliminar ubicación</MudButton> }
+            <MudForm Model="location.value" Validation="_locationValidator.ValidateValue">
+                <AddressSearch Label="Dirección*" @bind-Address="location.value.Address"
+                               Latitude="location.value.Latitude" Longitude="location.value.Longitude"
+                               For="@(() => location.value.Address)"
+                               OnPlaceSelected="@(details => SetLocation(location.value, details))"
+                               OnCoordinatesCleared="@(() => ClearCoordinates(location.value))" />
+                <MudTextField Label="Nota" @bind-Value="location.value.Note" For="@(() => location.value.Note)" />
+                @if (_model.Locations.Count > 1)
+                {
+                    <MudButton OnClick="@(() => RemoveLocation(location.index))">Eliminar ubicación</MudButton>
+                }
+            </MudForm>
         }
         <MudButton Class="mt-2" OnClick="AddLocation" StartIcon="@Icons.Material.Filled.Add">Agregar dirección</MudButton>
     </MudPaper>
-    <PrivacyConsent @bind-Value="_consent" Label="Confirmo que tengo autorización para publicar esta información y fotografía y acepto la" />
-    <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_turnstileToken" />
+
+    <PrivacyConsent @bind-Value="_model.PrivacyConsent" For="@(() => _model.PrivacyConsent)"
+                    Label="Confirmo que tengo autorización para publicar esta información y fotografía y acepto la" />
+    <Turnstile SiteKey="@Configuration["Turnstile:SiteKey"]" @bind-Token="_model.TurnstileToken" />
     <MudButton Class="mt-4" Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAsync" Disabled="_saving">Registrar</MudButton>
 </MudForm>
 
@@ -57,46 +74,7 @@
         <MudButton Class="mt-2" Href="@($"/missing-people/{_createdId}/manage")">Administrar este registro</MudButton>
     }
 }
-@if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert> }
-
-@code {
-    private MudForm? _form; private string? _name, _aliases, _age, _documentNumber, _description, _physical, _clothing, _turnstileToken, _managementCode, _error, _photoError; private Guid? _createdId; private IBrowserFile? _photo;
-    private IdentificationDocumentType? _documentType; private DateTime? _lastSeenDate = DateTime.Today; private bool _consent, _saving;
-    private readonly List<LocationDraft> _locations = [new()];
-    private void AddLocation() => _locations.Add(new());
-    private static void SetLocation(LocationDraft location, (string Address, double Latitude, double Longitude) details)
-    {
-        location.Address = details.Address;
-        location.Latitude = details.Latitude;
-        location.Longitude = details.Longitude;
-    }
-    private void OnPhotoSelected(InputFileChangeEventArgs args)
-    {
-        _photo = null; _photoError = null;
-        var file = args.File;
-        if (file is null) return;
-        if (file.Size > 10 * 1024 * 1024) { _photoError = "La fotografía no puede superar 10 MB."; return; }
-        if (file.ContentType is not ("image/jpeg" or "image/png" or "image/webp")) { _photoError = "Selecciona una imagen JPEG, PNG o WebP."; return; }
-        _photo = file;
-    }
-    private async Task SubmitAsync()
-    {
-        _error = null; _saving = true;
-        try
-        {
-            var response = await ApiClient.CreateMissingPersonAsync(new(_name ?? "", _aliases, _age, _documentType, _documentNumber, _description ?? "", _physical, _clothing, ToUtcOffset(_lastSeenDate), _locations.Select(location => new CreateMissingPersonLocationRequest(location.Address ?? "", location.Latitude, location.Longitude, location.Note)).ToList(), _consent, _turnstileToken ?? ""));
-            _managementCode = response.ManagementCode;
-            _createdId = response.Person.Id;
-            if (_photo is not null)
-            {
-                try { await ApiClient.UploadMissingPersonPhotoAsync(response.Person.Id, response.ManagementCode, _photo); }
-                catch (Exception exception) { _photoError = $"El registro se creó, pero la fotografía no pudo cargarse: {exception.Message}"; }
-            }
-        }
-        catch (Exception exception) { _error = exception.Message; }
-        finally { _saving = false; }
-    }
-    private sealed class LocationDraft { public string? Address { get; set; } public double? Latitude { get; set; } public double? Longitude { get; set; } public string? Note { get; set; } }
-    private static DateTimeOffset ToUtcOffset(DateTime? value) => new(DateTime.SpecifyKind(value ?? DateTime.Today, DateTimeKind.Unspecified), TimeSpan.Zero);
-    [Inject] private NavigationManager Navigation { get; set; } = default!;
+@if (_error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mt-4">@_error</MudAlert>
 }

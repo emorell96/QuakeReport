@@ -6,283 +6,113 @@
 @inject NavigationManager Navigation
 
 <PageTitle>Reportar Daño</PageTitle>
-
 <MudText Typo="Typo.h5" Class="mb-4">Reportar Daño</MudText>
 
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Ubicación</MudText>
-
-    @switch (_locationState)
-    {
-        case LocationState.Loading:
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
-                <MudText>Obteniendo tu ubicación... revisa si hay un aviso de permiso del navegador (suele aparecer cerca de la barra de direcciones).</MudText>
-            </MudStack>
-            break;
-        case LocationState.Failed:
-            <MudAlert Severity="Severity.Error" Class="mb-2">
-                @_locationErrorMessage Se requiere la ubicación para enviar un reporte.
-            </MudAlert>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RequestLocationAsync">Reintentar</MudButton>
-            break;
-        case LocationState.Success:
-            <MudAlert Severity="Severity.Success" Class="mb-2">
-                Ubicación capturada (@_latitude?.ToString("0.0000"), @_longitude?.ToString("0.0000"))
-            </MudAlert>
-            break;
-    }
-
-    <AddressSearch @bind-Address="_address"
-                   Latitude="_latitude"
-                   Longitude="_longitude"
-                   OnPlaceSelected="OnPlaceSelected" />
-</MudPaper>
-
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudTextField T="string" Label="Descripción" @bind-Value="_description" Lines="3" Required="true"
-                   RequiredError="La descripción es obligatoria" Class="mb-4" />
-
-    <MudSelect T="SeverityLevel" Label="Gravedad" @bind-Value="_severity" Required="true" Class="mb-4">
-        @foreach (var level in Enum.GetValues<SeverityLevel>())
+<MudForm @ref="_form" Model="_model" Validation="_validator.ValidateValue">
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Ubicación</MudText>
+        @switch (_locationState)
         {
-            <MudSelectItem T="SeverityLevel" Value="level">@level.ToDisplayString()</MudSelectItem>
+            case LocationState.Loading:
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Color="Color.Primary" />
+                    <MudText>Obteniendo tu ubicación... revisa si hay un aviso de permiso del navegador (suele aparecer cerca de la barra de direcciones).</MudText>
+                </MudStack>
+                break;
+            case LocationState.Failed:
+                <MudAlert Severity="Severity.Error" Class="mb-2">
+                    @_locationErrorMessage Se requiere la ubicación para enviar un reporte.
+                </MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RequestLocationAsync">Reintentar</MudButton>
+                break;
+            case LocationState.Success:
+                <MudAlert Severity="Severity.Success" Class="mb-2">
+                    Ubicación capturada (@_model.Latitude?.ToString("0.0000"), @_model.Longitude?.ToString("0.0000"))
+                </MudAlert>
+                break;
         }
-    </MudSelect>
 
-    <MudText Typo="Typo.body2" Class="mb-2">¿Qué daños observas? (selecciona todos los que apliquen)</MudText>
-    <MudGrid Class="mb-4">
-        @foreach (var sign in Enum.GetValues<DamageSign>())
-        {
-            if (sign == DamageSign.None)
+        <AddressSearch @bind-Address="_model.Address"
+                       Latitude="_model.Latitude" Longitude="_model.Longitude"
+                       For="@(() => _model.Address)" OnPlaceSelected="OnPlaceSelected"
+                       OnCoordinatesCleared="ClearCoordinates" />
+    </MudPaper>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudTextField T="string" Label="Descripción" @bind-Value="_model.Description"
+                      For="@(() => _model.Description)" Lines="3" Class="mb-4" />
+        <MudSelect T="SeverityLevel" Label="Gravedad" @bind-Value="_model.Severity"
+                   For="@(() => _model.Severity)" Class="mb-4">
+            @foreach (var level in Enum.GetValues<SeverityLevel>())
             {
-                continue;
+                <MudSelectItem T="SeverityLevel" Value="level">@level.ToDisplayString()</MudSelectItem>
             }
-            <MudItem xs="6" sm="4">
-                <MudCheckBox T="bool" Value="@_selectedSigns.Contains(sign)" ValueChanged="@(v => ToggleSign(sign, v))" Label="@sign.ToDisplayString()" />
+        </MudSelect>
+
+        <MudText Typo="Typo.body2" Class="mb-2">¿Qué daños observas? (selecciona todos los que apliquen)</MudText>
+        <MudGrid Class="mb-4">
+            @foreach (var sign in Enum.GetValues<DamageSign>())
+            {
+                if (sign != DamageSign.None)
+                {
+                    <MudItem xs="6" sm="4">
+                        <MudCheckBox T="bool" Value="@_model.DamageSigns.HasFlag(sign)"
+                                     ValueChanged="@(value => ToggleSign(sign, value))"
+                                     Label="@sign.ToDisplayString()" />
+                    </MudItem>
+                }
+            }
+        </MudGrid>
+
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="StructureType?" Label="Tipo de estructura (opcional)"
+                           @bind-Value="_model.StructureType" For="@(() => _model.StructureType)" Clearable="true">
+                    @foreach (var type in Enum.GetValues<StructureType>())
+                    {
+                        <MudSelectItem T="StructureType?" Value="type">@type.ToDisplayString()</MudSelectItem>
+                    }
+                </MudSelect>
             </MudItem>
-        }
-    </MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="StructureSize?" Label="Tamaño de la estructura (opcional)"
+                           @bind-Value="_model.StructureSize" For="@(() => _model.StructureSize)" Clearable="true">
+                    @foreach (var size in Enum.GetValues<StructureSize>())
+                    {
+                        <MudSelectItem T="StructureSize?" Value="size">@size.ToDisplayString()</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
 
-    <MudGrid>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="StructureType?" Label="Tipo de estructura (opcional)" @bind-Value="_structureType" Clearable="true">
-                @foreach (var type in Enum.GetValues<StructureType>())
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Fotos y Videos</MudText>
+        <InputFile multiple accept="image/*,video/*" OnChange="OnFilesSelected" />
+        @if (_model.MediaFiles.Count > 0)
+        {
+            <MudList T="string" Class="mt-2">
+                @foreach (var file in _model.MediaFiles)
                 {
-                    <MudSelectItem T="StructureType?" Value="type">@type.ToDisplayString()</MudSelectItem>
+                    <MudListItem T="string" Icon="@(file.ContentType.StartsWith("video/") ? Icons.Material.Filled.Videocam : Icons.Material.Filled.Image)">
+                        @file.Name (@((file.Size / 1024.0 / 1024.0).ToString("0.0")) MB)
+                    </MudListItem>
                 }
-            </MudSelect>
-        </MudItem>
-        <MudItem xs="12" sm="6">
-            <MudSelect T="StructureSize?" Label="Tamaño de la estructura (opcional)" @bind-Value="_structureSize" Clearable="true">
-                @foreach (var size in Enum.GetValues<StructureSize>())
-                {
-                    <MudSelectItem T="StructureSize?" Value="size">@size.ToDisplayString()</MudSelectItem>
-                }
-            </MudSelect>
-        </MudItem>
-    </MudGrid>
-</MudPaper>
-
-<MudPaper Class="pa-4 mb-4" Elevation="1">
-    <MudText Typo="Typo.subtitle1" Class="mb-2">Fotos y Videos</MudText>
-    <InputFile multiple accept="image/*,video/*" OnChange="OnFilesSelected" />
-    @if (_pendingFiles.Count > 0)
-    {
-        <MudList T="string" Class="mt-2">
-            @foreach (var file in _pendingFiles)
-            {
-                <MudListItem T="string" Icon="@(file.ContentType.StartsWith("video/") ? Icons.Material.Filled.Videocam : Icons.Material.Filled.Image)">
-                    @file.Name (@((file.Size / 1024.0 / 1024.0).ToString("0.0")) MB)
-                </MudListItem>
-            }
-        </MudList>
-    }
-</MudPaper>
-
-<PrivacyConsent @bind-Value="_privacyConsent" />
-
-<MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
-           Disabled="@(_submitting || _locationState != LocationState.Success)"
-           OnClick="SubmitAsync">
-    @if (_submitting)
-    {
-        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
-        <span>Enviando...</span>
-    }
-    else
-    {
-        <span>Enviar Reporte</span>
-    }
-</MudButton>
-
-@code {
-    private enum LocationState { Loading, Success, Failed }
-
-    private LocationState _locationState = LocationState.Loading;
-    private string? _locationErrorMessage;
-    private double? _latitude;
-    private double? _longitude;
-    private string? _address;
-    private bool _privacyConsent;
-
-    private string _description = string.Empty;
-    private SeverityLevel _severity = SeverityLevel.Moderate;
-    private readonly HashSet<DamageSign> _selectedSigns = [];
-    private StructureType? _structureType;
-    private StructureSize? _structureSize;
-
-    private readonly List<IBrowserFile> _pendingFiles = [];
-    private bool _submitting;
-
-    private const long MaxFileSizeBytes = 50 * 1024 * 1024;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // JS interop (geolocation, reverse geocoding) isn't available during
-        // static prerendering - it can only run once the circuit is connected,
-        // i.e. from OnAfterRenderAsync, not OnInitializedAsync.
-        if (firstRender)
-        {
-            await RequestLocationAsync();
+            </MudList>
         }
-    }
+    </MudPaper>
 
-    private async Task RequestLocationAsync()
-    {
-        _locationState = LocationState.Loading;
-        StateHasChanged();
-
-        var result = await Geolocation.GetCurrentPositionAsync();
-        switch (result)
+    <PrivacyConsent @bind-Value="_model.PrivacyConsent" For="@(() => _model.PrivacyConsent)" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true"
+               Disabled="@(_submitting || _locationState != LocationState.Success)" OnClick="SubmitAsync">
+        @if (_submitting)
         {
-            case GeolocationResult.Success success:
-                _latitude = success.Latitude;
-                _longitude = success.Longitude;
-                _locationState = LocationState.Success;
-                await TryPrefillAddressAsync(success.Latitude, success.Longitude);
-                break;
-            case GeolocationResult.Failure failure:
-                _locationErrorMessage = failure.Reason switch
-                {
-                    GeolocationFailureReason.Denied => "Se denegó el acceso a la ubicación.",
-                    GeolocationFailureReason.Timeout => "Se agotó el tiempo para obtener tu ubicación - si estás en un computador de escritorio, revisa que los avisos de ubicación/permisos no estén bloqueados.",
-                    GeolocationFailureReason.Unsupported => "Tu navegador no admite servicios de ubicación.",
-                    _ => "La ubicación no está disponible en este momento - en Windows, revisa que Configuración > Privacidad y Seguridad > Ubicación esté activada para tu navegador.",
-                };
-                _locationState = LocationState.Failed;
-                break;
-        }
-
-        StateHasChanged();
-    }
-
-    private async Task TryPrefillAddressAsync(double latitude, double longitude)
-    {
-        if (!string.IsNullOrWhiteSpace(_address))
-        {
-            return;
-        }
-
-        try
-        {
-            _address = await GooglePlaces.ReverseGeocodeAsync(latitude, longitude);
-        }
-        catch
-        {
-            // Best-effort convenience only - not a submission blocker.
-        }
-    }
-
-    private void OnPlaceSelected((string Address, double Latitude, double Longitude) place)
-    {
-        _address = place.Address;
-        _latitude = place.Latitude;
-        _longitude = place.Longitude;
-    }
-
-    private void ToggleSign(DamageSign sign, bool selected)
-    {
-        if (selected)
-        {
-            _selectedSigns.Add(sign);
+            <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+            <span>Enviando...</span>
         }
         else
         {
-            _selectedSigns.Remove(sign);
+            <span>Enviar Reporte</span>
         }
-    }
-
-    private void OnFilesSelected(InputFileChangeEventArgs e)
-    {
-        foreach (var file in e.GetMultipleFiles(20))
-        {
-            if (file.Size > MaxFileSizeBytes)
-            {
-                Snackbar.Add($"{file.Name} supera el límite de 50 MB y fue omitido.", Severity.Warning);
-                continue;
-            }
-            _pendingFiles.Add(file);
-        }
-    }
-
-    private async Task SubmitAsync()
-    {
-        if (!_privacyConsent)
-        {
-            Snackbar.Add("Debes aceptar la política de tratamiento de datos.", Severity.Warning);
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(_description))
-        {
-            Snackbar.Add("Por favor ingresa una descripción.", Severity.Warning);
-            return;
-        }
-        if (_latitude is null || _longitude is null)
-        {
-            Snackbar.Add("Se requiere la ubicación.", Severity.Warning);
-            return;
-        }
-
-        _submitting = true;
-        try
-        {
-            var damageSigns = _selectedSigns.Aggregate(DamageSign.None, (acc, sign) => acc | sign);
-            var request = new CreateDamageReportRequest
-            {
-                Description = _description,
-                Severity = _severity,
-                DamageSigns = damageSigns,
-                StructureType = _structureType,
-                StructureSize = _structureSize,
-                Latitude = _latitude.Value,
-                Longitude = _longitude.Value,
-                Address = _address,
-                PrivacyConsent = _privacyConsent,
-            };
-
-            var report = await ApiClient.CreateReportAsync(request);
-
-            foreach (var file in _pendingFiles)
-            {
-                var mediaType = file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase)
-                    ? MediaType.Video
-                    : MediaType.Photo;
-                await using var stream = file.OpenReadStream(MaxFileSizeBytes);
-                await ApiClient.UploadMediaAsync(report.Id, file.Name, file.ContentType, mediaType, stream);
-            }
-
-            Snackbar.Add("Reporte enviado.", Severity.Success);
-            Navigation.NavigateTo($"/report/{report.Id}");
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"No se pudo enviar el reporte: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _submitting = false;
-        }
-    }
-}
+    </MudButton>
+</MudForm>

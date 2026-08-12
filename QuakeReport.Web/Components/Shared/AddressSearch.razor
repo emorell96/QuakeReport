@@ -1,13 +1,13 @@
 @inject GooglePlacesService GooglePlaces
 
-<MudAutocomplete T="GooglePlaceSuggestion"
-                 Label="Dirección (opcional - busca para fijar la ubicación exacta)"
+<MudAutocomplete T="string"
+                 Label="@Label"
+                 For="@For"
                  Value="_selectedSuggestion"
                  ValueChanged="OnSuggestionSelectedAsync"
                  Text="@Address"
                  TextChanged="OnAddressTypedAsync"
                  SearchFunc="SearchAddressesAsync"
-                 ToStringFunc="FormatSuggestion"
                  MinCharacters="GooglePlacesService.MinimumSearchLength"
                  DebounceInterval="350"
                  MaxItems="5"
@@ -20,9 +20,10 @@
                  Adornment="Adornment.Start"
                  AdornmentIcon="@Icons.Material.Filled.Search"
                  Placeholder="Escribe al menos 4 caracteres..."
-                 HelperText="Las sugerencias de Google aparecen después de 4 caracteres">
+                 HelperText="Las sugerencias de Google aparecen después de 4 caracteres"
+                 Required="Required">
     <ItemTemplate Context="suggestion">
-        <MudText Typo="Typo.body2">@suggestion.Description</MudText>
+        <MudText Typo="Typo.body2">@suggestion</MudText>
     </ItemTemplate>
     <NoItemsTemplate>
         <MudText Typo="Typo.body2" Class="pa-2">
@@ -32,13 +33,20 @@
 </MudAutocomplete>
 
 @code {
-    private GooglePlaceSuggestion? _selectedSuggestion;
+    private string? _selectedSuggestion;
+    private readonly Dictionary<string, GooglePlaceSuggestion> _suggestions = new(StringComparer.Ordinal);
     private string? _searchError;
     private string _sessionToken = CreateSessionToken();
     private string? _coordinateAddress;
 
     [Parameter]
     public string? Address { get; set; }
+
+    [Parameter]
+    public string Label { get; set; } = "Dirección (opcional - busca para fijar la ubicación exacta)";
+
+    [Parameter]
+    public System.Linq.Expressions.Expression<Func<string?>>? For { get; set; }
 
     [Parameter]
     public EventCallback<string?> AddressChanged { get; set; }
@@ -55,6 +63,8 @@
 
     [Parameter]
     public EventCallback OnCoordinatesCleared { get; set; }
+    [Parameter]
+    public bool Required { get; set; } = false;
 
     protected override void OnParametersSet()
     {
@@ -68,7 +78,7 @@
         }
     }
 
-    private async Task<IEnumerable<GooglePlaceSuggestion>> SearchAddressesAsync(
+    private async Task<IEnumerable<string>> SearchAddressesAsync(
         string? value,
         CancellationToken cancellationToken)
     {
@@ -82,12 +92,19 @@
         try
         {
             _searchError = null;
-            return await GooglePlaces.SearchAsync(
+            var suggestions = await GooglePlaces.SearchAsync(
                 value,
                 Latitude,
                 Longitude,
                 _sessionToken,
                 cancellationToken);
+            _suggestions.Clear();
+            foreach (var suggestion in suggestions)
+            {
+                _suggestions[suggestion.Description] = suggestion;
+            }
+
+            return _suggestions.Keys;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -111,7 +128,7 @@
 
         Address = value;
         if (_selectedSuggestion is not null
-            && !string.Equals(value, _selectedSuggestion.Description, StringComparison.Ordinal))
+            && !string.Equals(value, _selectedSuggestion, StringComparison.Ordinal))
         {
             _selectedSuggestion = null;
         }
@@ -119,10 +136,10 @@
         await AddressChanged.InvokeAsync(value);
     }
 
-    private async Task OnSuggestionSelectedAsync(GooglePlaceSuggestion? suggestion)
+    private async Task OnSuggestionSelectedAsync(string? selectedAddress)
     {
-        _selectedSuggestion = suggestion;
-        if (suggestion is null)
+        _selectedSuggestion = selectedAddress;
+        if (selectedAddress is null || !_suggestions.TryGetValue(selectedAddress, out var suggestion))
         {
             return;
         }
@@ -151,9 +168,6 @@
             _searchError = "Google no pudo cargar la dirección seleccionada.";
         }
     }
-
-    private static string FormatSuggestion(GooglePlaceSuggestion? suggestion) =>
-        suggestion?.Description ?? string.Empty;
 
     private static string CreateSessionToken() => Guid.NewGuid().ToString("N");
 }
