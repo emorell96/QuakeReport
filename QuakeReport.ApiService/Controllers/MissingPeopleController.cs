@@ -9,6 +9,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -122,7 +123,7 @@ public class MissingPeopleController(
         person.Locations = request.Locations.Select(location => new MissingPersonLocation
         {
             Id = Guid.NewGuid(), MissingPersonId = person.Id, Address = location.Address.Trim(), SearchAddress = NormalizeSearch(location.Address),
-            Latitude = location.Latitude, Longitude = location.Longitude, Note = location.Note?.Trim(),
+            Location = GeoPoint.FromCoordinates(location.Latitude, location.Longitude), Note = location.Note?.Trim(),
         }).ToList();
         db.MissingPeople.Add(person);
         await db.SaveChangesAsync(cancellationToken);
@@ -152,7 +153,7 @@ public class MissingPeopleController(
         if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
         if (!challenge.Success) return BadRequest("Human verification failed.");
         if (!await db.MissingPeople.AnyAsync(person => person.Id == id && person.Status != MissingPersonStatus.Closed, cancellationToken)) return NotFound();
-        var tip = new MissingPersonTip { Id = Guid.NewGuid(), MissingPersonId = id, Message = request.Message.Trim(), SightedAt = request.SightedAt, Address = request.Address?.Trim(), Latitude = request.Latitude, Longitude = request.Longitude, ResponderName = request.ResponderName?.Trim(), ResponderPhone = request.ResponderPhone?.Trim(), ResponderEmail = request.ResponderEmail?.Trim() };
+        var tip = new MissingPersonTip { Id = Guid.NewGuid(), MissingPersonId = id, Message = request.Message.Trim(), SightedAt = request.SightedAt, Address = request.Address?.Trim(), Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude), ResponderName = request.ResponderName?.Trim(), ResponderPhone = request.ResponderPhone?.Trim(), ResponderEmail = request.ResponderEmail?.Trim() };
         db.MissingPersonTips.Add(tip);
         await db.SaveChangesAsync(cancellationToken);
         return Created($"/api/missing-people/{id}/tips/{tip.Id}", tip.ToPublicResponse());
@@ -196,7 +197,7 @@ public class MissingPeopleController(
         if (!Authorize(code, person)) return Unauthorized();
         person.FullName = request.FullName.Trim(); person.SearchName = NormalizeSearch(request.FullName + " " + request.Aliases); person.Aliases = request.Aliases?.Trim(); person.ApproximateAge = request.ApproximateAge?.Trim(); person.Description = request.Description.Trim(); person.PhysicalDescription = request.PhysicalDescription?.Trim(); person.ClothingDescription = request.ClothingDescription?.Trim(); person.LastSeenAt = request.LastSeenAt; person.UpdatedAt = DateTimeOffset.UtcNow;
         db.MissingPersonLocations.RemoveRange(person.Locations);
-        person.Locations = request.Locations.Select(location => new MissingPersonLocation { Id = Guid.NewGuid(), MissingPersonId = id, Address = location.Address.Trim(), SearchAddress = NormalizeSearch(location.Address), Latitude = location.Latitude, Longitude = location.Longitude, Note = location.Note?.Trim() }).ToList();
+        person.Locations = request.Locations.Select(location => new MissingPersonLocation { Id = Guid.NewGuid(), MissingPersonId = id, Address = location.Address.Trim(), SearchAddress = NormalizeSearch(location.Address), Location = GeoPoint.FromCoordinates(location.Latitude, location.Longitude), Note = location.Note?.Trim() }).ToList();
         await db.SaveChangesAsync(cancellationToken);
         return Ok(person.ToResponse());
     }

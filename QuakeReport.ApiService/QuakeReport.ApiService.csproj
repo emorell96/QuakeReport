@@ -23,6 +23,7 @@
     <ProjectReference Include="..\QuakeReport.ServiceDefaults\QuakeReport.ServiceDefaults.csproj" />
     <ProjectReference Include="..\QuakeReport.Data\QuakeReport.Data.csproj" />
     <ProjectReference Include="..\QuakeReport.Contracts\QuakeReport.Contracts.csproj" />
+    <ProjectReference Include="..\QuakeReport.Geospatial\QuakeReport.Geospatial.csproj" />
   </ItemGroup>
 
 </Project>

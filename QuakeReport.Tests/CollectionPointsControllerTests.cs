@@ -7,6 +7,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.Tests;
 
@@ -74,11 +75,9 @@ public class CollectionPointsControllerTests
         using var db = TestDb.Create();
         var earthquakeId = QuakeReportDbContext.ColombiaEarthquakeId;
         var coordinates = Point(earthquakeId, "Coordenadas", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
-        coordinates.Latitude = 3.4516;
-        coordinates.Longitude = -76.5320;
+        coordinates.Location = GeoPoint.FromCoordinates(3.4516, -76.5320);
         var address = Point(earthquakeId, "Dirección", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
-        address.Latitude = null;
-        address.Longitude = null;
+        address.Location = null;
         db.CollectionPoints.AddRange(coordinates, address);
         await db.SaveChangesAsync();
 
@@ -96,11 +95,9 @@ public class CollectionPointsControllerTests
         using var db = TestDb.Create();
         var earthquakeId = QuakeReportDbContext.ColombiaEarthquakeId;
         var nearby = Point(earthquakeId, "Cerca", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
-        nearby.Latitude = 3.4516;
-        nearby.Longitude = -76.5320;
+        nearby.Location = GeoPoint.FromCoordinates(3.4516, -76.5320);
         var farAway = Point(earthquakeId, "Lejos", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
-        farAway.Latitude = 4.7110;
-        farAway.Longitude = -74.0721;
+        farAway.Location = GeoPoint.FromCoordinates(4.7110, -74.0721);
         var withoutCoordinates = Point(earthquakeId, "Sin coordenadas", CollectionPointModerationStatus.Approved, CollectionPointOperationalStatus.Open);
         db.CollectionPoints.AddRange(farAway, withoutCoordinates, nearby);
         await db.SaveChangesAsync();

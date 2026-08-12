@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using QuakeReport.Data.Geospatial;
 using QuakeReport.Data.Models;
 
 namespace QuakeReport.Data;
@@ -26,6 +27,7 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
     public DbSet<BloodDonationCenterComment> BloodDonationCenterComments => Set<BloodDonationCenterComment>();
     public DbSet<BloodDonationCenterAbuseReport> BloodDonationCenterAbuseReports => Set<BloodDonationCenterAbuseReport>();
     public DbSet<IngestionSubmission> IngestionSubmissions => Set<IngestionSubmission>();
+    public DbSet<GeocodingReviewItem> GeocodingReviewItems => Set<GeocodingReviewItem>();
 
     /// <summary>
     /// The single event this MVP currently reports against. Referenced by the
@@ -35,6 +37,8 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasPostgresExtension("postgis");
+
         modelBuilder.Entity<Earthquake>(entity =>
         {
             entity.Property(e => e.Name).HasMaxLength(200);
@@ -46,8 +50,7 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
                 Name = "M7.4 - Colombia",
                 Magnitude = 7.4,
                 OccurredAt = new DateTimeOffset(2026, 8, 10, 0, 0, 0, TimeSpan.Zero),
-                EpicenterLatitude = 4.5709,
-                EpicenterLongitude = -74.2973,
+                Location = GeoPoint.FromCoordinates(4.5709, -74.2973),
                 Source = null,
                 IsActive = true,
                 CreatedAt = new DateTimeOffset(2026, 8, 10, 0, 0, 0, TimeSpan.Zero)
@@ -246,5 +249,39 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
             entity.HasIndex(e => new { e.EarthquakeId, e.CreatedAt });
             entity.HasOne(e => e.Earthquake).WithMany().HasForeignKey(e => e.EarthquakeId).OnDelete(DeleteBehavior.Restrict);
         });
+
+        ConfigureLocation<Earthquake>(modelBuilder, required: true);
+        ConfigureLocation<DamageReport>(modelBuilder, required: true);
+        ConfigureLocation<MissingPersonLocation>(modelBuilder);
+        ConfigureLocation<MissingPersonTip>(modelBuilder);
+        ConfigureLocation<CollectionPoint>(modelBuilder);
+        ConfigureLocation<Shelter>(modelBuilder);
+        ConfigureLocation<HelpRequest>(modelBuilder);
+        ConfigureLocation<BloodDonationCenter>(modelBuilder);
+
+        modelBuilder.Entity<GeocodingReviewItem>(entity =>
+        {
+            entity.Property(item => item.EntityType).HasMaxLength(100);
+            entity.Property(item => item.AddressSnapshot).HasMaxLength(500);
+            entity.Property(item => item.AddressHash).HasMaxLength(64);
+            entity.Property(item => item.Reason).HasMaxLength(500);
+            entity.Property(item => item.FormattedAddress).HasMaxLength(500);
+            entity.Property(item => item.GooglePlaceId).HasMaxLength(300);
+            entity.Property(item => item.Granularity).HasMaxLength(50);
+            entity.Property(item => item.ResolvedBy).HasMaxLength(320);
+            entity.Property(item => item.CandidateLocation).HasColumnType("geography (point, 4326)");
+            entity.HasIndex(item => new { item.EntityType, item.EntityId, item.AddressHash }).IsUnique();
+            entity.HasIndex(item => new { item.Status, item.LastAttemptAt });
+        });
+    }
+
+    private static void ConfigureLocation<TEntity>(ModelBuilder modelBuilder, bool required = false)
+        where TEntity : class, IEntityWithLocation
+    {
+        var entity = modelBuilder.Entity<TEntity>();
+        entity.Property(item => item.Location)
+            .HasColumnType("geography (point, 4326)")
+            .IsRequired(required);
+        entity.HasIndex(item => item.Location).HasMethod("gist");
     }
 }

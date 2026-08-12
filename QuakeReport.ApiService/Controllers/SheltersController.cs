@@ -10,6 +10,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -40,7 +41,7 @@ public class SheltersController(
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             (latitude.HasValue != longitude.HasValue) ||
-            (latitude.HasValue && !GeographicDistance.IsValid(latitude.Value, longitude!.Value)))
+            (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
             return BadRequest("Invalid shelter query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
@@ -60,13 +61,11 @@ public class SheltersController(
 
         if (latitude.HasValue)
         {
-            var candidates = await shelters.Where(shelter => shelter.Latitude != null && shelter.Longitude != null).ToListAsync(cancellationToken);
-            var nearest = candidates
-                .OrderBy(shelter => GeographicDistance.Kilometers(latitude.Value, longitude!.Value, shelter.Latitude!.Value, shelter.Longitude!.Value))
-                .ThenBy(shelter => shelter.Id)
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(shelter => shelter.ToSummaryResponse()).ToList();
-            return Ok(new PagedResponse<ShelterSummaryResponse>(nearest, page, pageSize, candidates.Count, (int)Math.Ceiling(candidates.Count / (double)pageSize)));
+            var candidates = shelters.Where(shelter => shelter.Location != null);
+            var count = await candidates.CountAsync(cancellationToken);
+            var nearest = await candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
+                .ThenBy(shelter => shelter.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            return Ok(new PagedResponse<ShelterSummaryResponse>(nearest.Select(shelter => shelter.ToSummaryResponse()).ToList(), page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
         }
 
         var total = await shelters.CountAsync(cancellationToken);
@@ -248,7 +247,7 @@ public class SheltersController(
             Id = Guid.NewGuid(), EarthquakeId = earthquakeId, Source = source, ModerationStatus = moderation,
             ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code),
             Name = request.Name.Trim(), OrganizationName = request.OrganizationName?.Trim(), Address = request.Address.Trim(),
-            Latitude = request.Latitude, Longitude = request.Longitude, Description = request.Description.Trim(),
+            Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude), Description = request.Description.Trim(),
             OperatingInstructions = request.OperatingInstructions.Trim(), ContactName = request.ContactName?.Trim(),
             ContactPhone = request.ContactPhone?.Trim(), ContactWhatsApp = request.ContactWhatsApp?.Trim(), ContactEmail = request.ContactEmail?.Trim(),
         };
@@ -259,7 +258,7 @@ public class SheltersController(
     private static void Apply(Shelter shelter, UpdateShelterRequest request)
     {
         shelter.Name = request.Name.Trim(); shelter.OrganizationName = request.OrganizationName?.Trim();
-        shelter.Address = request.Address.Trim(); shelter.Latitude = request.Latitude; shelter.Longitude = request.Longitude;
+        shelter.Address = request.Address.Trim(); shelter.Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude);
         shelter.Description = request.Description.Trim(); shelter.OperatingInstructions = request.OperatingInstructions.Trim();
         shelter.ContactName = request.ContactName?.Trim(); shelter.ContactPhone = request.ContactPhone?.Trim();
         shelter.ContactWhatsApp = request.ContactWhatsApp?.Trim(); shelter.ContactEmail = request.ContactEmail?.Trim();

@@ -7,6 +7,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -143,8 +144,7 @@ public class ReportsController(
             DamageSigns = request.DamageSigns,
             StructureType = request.StructureType,
             StructureSize = request.StructureSize,
-            Latitude = request.Latitude,
-            Longitude = request.Longitude,
+            Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude),
             Address = request.Address,
         };
 

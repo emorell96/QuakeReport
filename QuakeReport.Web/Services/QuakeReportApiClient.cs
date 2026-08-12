@@ -12,6 +12,31 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
 {
     private string ModerationKey => configuration?["Moderation:ApiKey"] ?? string.Empty;
 
+    public async Task<IReadOnlyList<GeocodingReviewItemResponse>> GetGeocodingReviewItemsAsync(GeocodingReviewStatus status, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/geocoding-review?status={status}");
+        request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<IReadOnlyList<GeocodingReviewItemResponse>>(cancellationToken) ?? [];
+    }
+
+    public async Task RetryGeocodingReviewAsync(Guid id, CancellationToken cancellationToken = default) =>
+        await SendGeocodingReviewAsync(HttpMethod.Post, $"/api/geocoding-review/{id}/retry", null, cancellationToken);
+
+    public async Task ResolveGeocodingReviewAsync(Guid id, ResolveGeocodingReviewRequest payload, CancellationToken cancellationToken = default) =>
+        await SendGeocodingReviewAsync(HttpMethod.Put, $"/api/geocoding-review/{id}/resolve", payload, cancellationToken);
+
+    public async Task DismissGeocodingReviewAsync(Guid id, DismissGeocodingReviewRequest payload, CancellationToken cancellationToken = default) =>
+        await SendGeocodingReviewAsync(HttpMethod.Post, $"/api/geocoding-review/{id}/dismiss", payload, cancellationToken);
+
+    private async Task SendGeocodingReviewAsync(HttpMethod method, string uri, object? payload, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(method, uri);
+        request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
+        if (payload is not null) request.Content = JsonContent.Create(payload);
+        var response = await httpClient.SendAsync(request, cancellationToken); response.EnsureSuccessStatusCode();
+    }
+
     public async Task<PagedResponse<BloodDonationCenterSummaryResponse>> GetBloodDonationCentersAsync(string? query=null, BloodDonationCenterType? centerType=null, BloodDonationOperationalStatus? operationalStatus=null, BloodDonationModerationStatus? moderationStatus=null, BloodTypeFlags? bloodTypes=null, BloodComponentFlags? components=null, BloodDonationSortOption sort=BloodDonationSortOption.Newest, int page=1, int pageSize=20, CancellationToken cancellationToken=default, double? latitude=null, double? longitude=null) { var p=new Dictionary<string,string?>{["page"]=page.ToString(),["pageSize"]=pageSize.ToString(),["sort"]=sort.ToString()}; if(!string.IsNullOrWhiteSpace(query))p["query"]=query;if(centerType is not null)p["centerType"]=centerType.ToString();if(operationalStatus is not null)p["operationalStatus"]=operationalStatus.ToString();if(moderationStatus is not null)p["moderationStatus"]=moderationStatus.ToString();if(bloodTypes is not null)p["bloodTypes"]=bloodTypes.ToString();if(components is not null)p["components"]=components.ToString();if(latitude is not null)p["latitude"]=latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);if(longitude is not null)p["longitude"]=longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);var uri=QueryHelpers.AddQueryString("/api/blood-donation-centers",p);return await httpClient.GetFromJsonAsync<PagedResponse<BloodDonationCenterSummaryResponse>>(uri,cancellationToken)??new([],page,pageSize,0,0); }
     public async Task<BloodDonationCenterResponse?> GetBloodDonationCenterAsync(Guid id,CancellationToken cancellationToken=default){var r=await httpClient.GetAsync($"/api/blood-donation-centers/{id}",cancellationToken);if(r.StatusCode==System.Net.HttpStatusCode.NotFound)return null;r.EnsureSuccessStatusCode();return await r.Content.ReadFromJsonAsync<BloodDonationCenterResponse>(cancellationToken);}
     public async Task<CreateBloodDonationCenterResponse> CreateBloodDonationCenterAsync(CreateBloodDonationCenterRequest request,CancellationToken cancellationToken=default){var r=await httpClient.PostAsJsonAsync("/api/blood-donation-centers",request,cancellationToken);r.EnsureSuccessStatusCode();return(await r.Content.ReadFromJsonAsync<CreateBloodDonationCenterResponse>(cancellationToken))!;}

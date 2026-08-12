@@ -3,6 +3,8 @@
   <Project Path="QuakeReport.AppHost/QuakeReport.AppHost.csproj" />
   <Project Path="QuakeReport.Contracts/QuakeReport.Contracts.csproj" />
   <Project Path="QuakeReport.Data/QuakeReport.Data.csproj" />
+  <Project Path="QuakeReport.Geospatial/QuakeReport.Geospatial.csproj" />
+  <Project Path="QuakeReport.GeocodingWorker/QuakeReport.GeocodingWorker.csproj" />
   <Project Path="QuakeReport.MigrationService/QuakeReport.MigrationService.csproj" />
   <Project Path="QuakeReport.ServiceDefaults/QuakeReport.ServiceDefaults.csproj" />
   <Project Path="QuakeReport.Tests/QuakeReport.Tests.csproj" />

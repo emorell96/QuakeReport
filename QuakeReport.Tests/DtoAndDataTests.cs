@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.Tests;
 
@@ -36,8 +37,7 @@ public class DtoAndDataTests
             DamageSigns = DamageSign.Cracks | DamageSign.GasSmell,
             StructureType = StructureType.Apartment,
             StructureSize = StructureSize.Large,
-            Latitude = 4.5,
-            Longitude = -74.3,
+            Location = GeoPoint.FromCoordinates(4.5, -74.3),
             Address = "Main Street",
             CreatedAt = createdAt,
             Media = [media],
@@ -52,8 +52,8 @@ public class DtoAndDataTests
         Assert.AreEqual(report.DamageSigns, result.DamageSigns);
         Assert.AreEqual(StructureType.Apartment, result.StructureType);
         Assert.AreEqual(StructureSize.Large, result.StructureSize);
-        Assert.AreEqual(report.Latitude, result.Latitude);
-        Assert.AreEqual(report.Longitude, result.Longitude);
+        Assert.AreEqual(report.Location.Y, result.Latitude);
+        Assert.AreEqual(report.Location.X, result.Longitude);
         Assert.AreEqual(report.Address, result.Address);
         Assert.AreEqual(createdAt, result.CreatedAt);
         Assert.AreEqual(1, result.Media.Count);
@@ -71,8 +71,7 @@ public class DtoAndDataTests
             EarthquakeId = Guid.NewGuid(),
             Description = "Blocked road",
             Severity = SeverityLevel.Minor,
-            Latitude = 1,
-            Longitude = 2,
+            Location = GeoPoint.FromCoordinates(1, 2),
         };
 
         var result = report.ToResponse();
@@ -94,8 +93,7 @@ public class DtoAndDataTests
             DamageSigns = DamageSign.Cracks,
             StructureType = StructureType.Commercial,
             StructureSize = StructureSize.Medium,
-            Latitude = 4.5,
-            Longitude = -74.3,
+            Location = GeoPoint.FromCoordinates(4.5, -74.3),
             Address = "Main Street",
             CreatedAt = DateTimeOffset.UtcNow,
         };
@@ -109,8 +107,8 @@ public class DtoAndDataTests
         Assert.AreEqual(report.DamageSigns, result.DamageSigns);
         Assert.AreEqual(report.StructureType, result.StructureType);
         Assert.AreEqual(report.StructureSize, result.StructureSize);
-        Assert.AreEqual(report.Latitude, result.Latitude);
-        Assert.AreEqual(report.Longitude, result.Longitude);
+        Assert.AreEqual(report.Location.Y, result.Latitude);
+        Assert.AreEqual(report.Location.X, result.Longitude);
         Assert.AreEqual(report.Address, result.Address);
         Assert.AreEqual(report.CreatedAt, result.CreatedAt);
         Assert.IsNull(result.GetType().GetProperty("Media"));
@@ -145,7 +143,7 @@ public class DtoAndDataTests
     [TestMethod]
     public void BloodDonationCenterMapsSpanishSafePublicSummaryAndMapsUrl()
     {
-        var center = new BloodDonationCenter { Id = Guid.NewGuid(), EarthquakeId = Guid.NewGuid(), Name = "Banco de sangre", Address = "Calle 1", OperatingInstructions = "Confirma antes de ir", NeedsSummary = "Donaciones", PublicPhone = "3001234567", Latitude = 4.5, Longitude = -74.3, BloodTypes = BloodTypeFlags.APositive | BloodTypeFlags.ONegative, Components = BloodComponentFlags.Plasma, CenterType = BloodDonationCenterType.PermanentSite };
+        var center = new BloodDonationCenter { Id = Guid.NewGuid(), EarthquakeId = Guid.NewGuid(), Name = "Banco de sangre", Address = "Calle 1", OperatingInstructions = "Confirma antes de ir", NeedsSummary = "Donaciones", PublicPhone = "3001234567", Location = GeoPoint.FromCoordinates(4.5, -74.3), BloodTypes = BloodTypeFlags.APositive | BloodTypeFlags.ONegative, Components = BloodComponentFlags.Plasma, CenterType = BloodDonationCenterType.PermanentSite };
         var result = center.ToSummaryResponse();
         Assert.AreEqual(center.Id, result.Id);
         Assert.IsTrue(result.GoogleMapsUrl.Contains("4.5", StringComparison.Ordinal));

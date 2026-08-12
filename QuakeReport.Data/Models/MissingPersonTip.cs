@@ -1,6 +1,8 @@
+using NetTopologySuite.Geometries;
+
 namespace QuakeReport.Data.Models;
 
-public class MissingPersonTip
+public class MissingPersonTip : IGeocodableEntity
 {
     public Guid Id { get; set; }
     public required Guid MissingPersonId { get; set; }
@@ -8,8 +10,7 @@ public class MissingPersonTip
     public required string Message { get; set; }
     public DateTimeOffset? SightedAt { get; set; }
     public string? Address { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
+    public Point? Location { get; set; }
     public string? ResponderName { get; set; }
     public string? ResponderPhone { get; set; }
     public string? ResponderEmail { get; set; }

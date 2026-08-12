@@ -10,6 +10,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -37,7 +38,7 @@ public class CollectionPointsController(
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             (latitude.HasValue != longitude.HasValue) ||
-            (latitude.HasValue && !GeographicDistance.IsValid(latitude.Value, longitude!.Value)))
+            (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
             return BadRequest("Invalid collection-point query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
@@ -55,13 +56,11 @@ public class CollectionPointsController(
 
         if (latitude.HasValue)
         {
-            var candidates = await points.Where(point => point.Latitude != null && point.Longitude != null).ToListAsync(cancellationToken);
-            var nearest = candidates
-                .OrderBy(point => GeographicDistance.Kilometers(latitude.Value, longitude!.Value, point.Latitude!.Value, point.Longitude!.Value))
-                .ThenBy(point => point.Id)
-                .Skip((page - 1) * pageSize).Take(pageSize)
-                .Select(point => point.ToSummaryResponse()).ToList();
-            return Ok(new PagedResponse<CollectionPointSummaryResponse>(nearest, page, pageSize, candidates.Count, (int)Math.Ceiling(candidates.Count / (double)pageSize)));
+            var candidates = points.Where(point => point.Location != null);
+            var count = await candidates.CountAsync(cancellationToken);
+            var nearest = await candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
+                .ThenBy(point => point.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+            return Ok(new PagedResponse<CollectionPointSummaryResponse>(nearest.Select(point => point.ToSummaryResponse()).ToList(), page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
         }
 
         var total = await points.CountAsync(cancellationToken);
@@ -229,13 +228,13 @@ public class CollectionPointsController(
     private static bool Authorize(string? code, CollectionPoint point) => !string.IsNullOrWhiteSpace(code) && point.ManagementCodeHash is not null && MissingPersonSecurity.Matches(code, point.ManagementCodeHash);
     private static CollectionPoint CreateEntity(CreateCollectionPointRequest request, Guid earthquakeId, CollectionPointSource source, CollectionPointModerationStatus moderation, string? code)
     {
-        var point = new CollectionPoint { Id = Guid.NewGuid(), EarthquakeId = earthquakeId, Name = request.Name.Trim(), OrganizationName = request.OrganizationName?.Trim(), Address = request.Address.Trim(), Latitude = request.Latitude, Longitude = request.Longitude, Description = request.Description?.Trim(), NeedsSummary = request.NeedsSummary.Trim(), ReceivingInstructions = request.ReceivingInstructions.Trim(), ContactName = request.ContactName?.Trim(), ContactPhone = request.ContactPhone?.Trim(), ContactWhatsApp = request.ContactWhatsApp?.Trim(), ContactEmail = request.ContactEmail?.Trim(), EndsAt = request.EndsAt, Source = source, ModerationStatus = moderation, ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code) };
+        var point = new CollectionPoint { Id = Guid.NewGuid(), EarthquakeId = earthquakeId, Name = request.Name.Trim(), OrganizationName = request.OrganizationName?.Trim(), Address = request.Address.Trim(), Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude), Description = request.Description?.Trim(), NeedsSummary = request.NeedsSummary.Trim(), ReceivingInstructions = request.ReceivingInstructions.Trim(), ContactName = request.ContactName?.Trim(), ContactPhone = request.ContactPhone?.Trim(), ContactWhatsApp = request.ContactWhatsApp?.Trim(), ContactEmail = request.ContactEmail?.Trim(), EndsAt = request.EndsAt, Source = source, ModerationStatus = moderation, ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code) };
         point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
         return point;
     }
     private static void Apply(CollectionPoint point, UpdateCollectionPointRequest request)
     {
-        point.Name = request.Name.Trim(); point.OrganizationName = request.OrganizationName?.Trim(); point.Address = request.Address.Trim(); point.Latitude = request.Latitude; point.Longitude = request.Longitude; point.Description = request.Description?.Trim(); point.NeedsSummary = request.NeedsSummary.Trim(); point.ReceivingInstructions = request.ReceivingInstructions.Trim(); point.ContactName = request.ContactName?.Trim(); point.ContactPhone = request.ContactPhone?.Trim(); point.ContactWhatsApp = request.ContactWhatsApp?.Trim(); point.ContactEmail = request.ContactEmail?.Trim(); point.EndsAt = request.EndsAt; point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary)); point.UpdatedAt = DateTimeOffset.UtcNow;
+        point.Name = request.Name.Trim(); point.OrganizationName = request.OrganizationName?.Trim(); point.Address = request.Address.Trim(); point.Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude); point.Description = request.Description?.Trim(); point.NeedsSummary = request.NeedsSummary.Trim(); point.ReceivingInstructions = request.ReceivingInstructions.Trim(); point.ContactName = request.ContactName?.Trim(); point.ContactPhone = request.ContactPhone?.Trim(); point.ContactWhatsApp = request.ContactWhatsApp?.Trim(); point.ContactEmail = request.ContactEmail?.Trim(); point.EndsAt = request.EndsAt; point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary)); point.UpdatedAt = DateTimeOffset.UtcNow;
     }
     private static string? Validate(CreateCollectionPointRequest request) => !request.PrivacyConsent ? "Privacy consent is required." : ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
     private static string? Validate(UpdateCollectionPointRequest request) => ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
