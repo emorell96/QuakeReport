@@ -1,8 +1,9 @@
 using QuakeReport.Contracts.Enums;
+using NetTopologySuite.Geometries;
 
 namespace QuakeReport.Data.Models;
 
-public class Shelter
+public class Shelter : IGeocodableEntity
 {
     public Guid Id { get; set; }
     public required Guid EarthquakeId { get; set; }
@@ -11,8 +12,7 @@ public class Shelter
     public string? OrganizationName { get; set; }
     public required string Address { get; set; }
     public string? SearchText { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
+    public Point? Location { get; set; }
     public required string Description { get; set; }
     public required string OperatingInstructions { get; set; }
     public string? ContactName { get; set; }

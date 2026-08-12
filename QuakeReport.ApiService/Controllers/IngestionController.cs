@@ -11,6 +11,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -91,7 +92,7 @@ public sealed class IngestionController(
         var point = new CollectionPoint
         {
             Id = id, EarthquakeId = earthquakeId, Name = data.Name.Trim(), OrganizationName = Trim(data.OrganizationName),
-            Address = data.Address.Trim(), Latitude = data.Latitude, Longitude = data.Longitude, Description = Trim(data.Description),
+            Address = data.Address.Trim(), Location = GeoPoint.FromCoordinates(data.Latitude, data.Longitude), Description = Trim(data.Description),
             NeedsSummary = data.NeedsSummary.Trim(), ReceivingInstructions = data.ReceivingInstructions.Trim(), ContactName = Trim(data.ContactName),
             ContactPhone = Trim(data.ContactPhone), ContactWhatsApp = Trim(data.ContactWhatsApp), ContactEmail = Trim(data.ContactEmail), EndsAt = data.EndsAt,
             Source = CollectionPointSource.Automated, ModerationStatus = CollectionPointModerationStatus.Pending
@@ -112,7 +113,7 @@ public sealed class IngestionController(
         var center = new BloodDonationCenter
         {
             Id = id, EarthquakeId = earthquakeId, Name = data.Name.Trim(), OrganizationName = Trim(data.OrganizationName), Address = data.Address.Trim(),
-            Latitude = data.Latitude, Longitude = data.Longitude, Description = Trim(data.Description), OperatingInstructions = data.OperatingInstructions.Trim(),
+            Location = GeoPoint.FromCoordinates(data.Latitude, data.Longitude), Description = Trim(data.Description), OperatingInstructions = data.OperatingInstructions.Trim(),
             NeedsSummary = data.NeedsSummary.Trim(), PublicPhone = data.PublicPhone.Trim(), PublicWhatsApp = Trim(data.PublicWhatsApp), PublicEmail = Trim(data.PublicEmail),
             CenterType = data.CenterType, BloodTypes = data.BloodTypes, Components = data.Components, StartsAt = data.StartsAt, EndsAt = data.EndsAt,
             Source = BloodDonationSource.Automated, ModerationStatus = BloodDonationModerationStatus.Pending
@@ -130,7 +131,7 @@ public sealed class IngestionController(
         var shelter = new Shelter
         {
             Id = id, EarthquakeId = earthquakeId, Name = data.Name.Trim(), OrganizationName = Trim(data.OrganizationName), Address = data.Address.Trim(),
-            Latitude = data.Latitude, Longitude = data.Longitude, Description = data.Description.Trim(), OperatingInstructions = data.OperatingInstructions.Trim(),
+            Location = GeoPoint.FromCoordinates(data.Latitude, data.Longitude), Description = data.Description.Trim(), OperatingInstructions = data.OperatingInstructions.Trim(),
             ContactName = Trim(data.ContactName), ContactPhone = Trim(data.ContactPhone), ContactWhatsApp = Trim(data.ContactWhatsApp), ContactEmail = Trim(data.ContactEmail),
             Source = ShelterSource.Automated, ModerationStatus = ShelterModerationStatus.Pending
         };
@@ -150,7 +151,7 @@ public sealed class IngestionController(
         var request = new HelpRequest
         {
             Id = id, EarthquakeId = earthquakeId, Title = data.Title.Trim(), RequesterName = data.RequesterName.Trim(), OrganizationName = Trim(data.OrganizationName), Address = data.Address.Trim(),
-            Latitude = data.Latitude, Longitude = data.Longitude, NeedDetails = data.NeedDetails.Trim(), Instructions = Trim(data.Instructions), PublicPhone = data.PublicPhone.Trim(),
+            Location = GeoPoint.FromCoordinates(data.Latitude, data.Longitude), NeedDetails = data.NeedDetails.Trim(), Instructions = Trim(data.Instructions), PublicPhone = data.PublicPhone.Trim(),
             PublicWhatsApp = Trim(data.PublicWhatsApp), PublicEmail = Trim(data.PublicEmail), Priority = data.Priority, NeedCategories = data.NeedCategories, NeededBy = data.NeededBy,
             Source = HelpRequestSource.Automated, ModerationStatus = HelpRequestModerationStatus.Pending
         };

@@ -3,6 +3,8 @@ using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Ingestion;
 using QuakeReport.Data;
+using Microsoft.EntityFrameworkCore;
+using QuakeReport.Geospatial;
 using Scalar.AspNetCore;
 using System.Security.Cryptography;
 using System.Text;
@@ -43,7 +45,8 @@ builder.Services.AddRateLimiter(options =>
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
-builder.AddAzureNpgsqlDbContext<QuakeReportDbContext>("quakereportdb");
+builder.AddAzureNpgsqlDbContext<QuakeReportDbContext>("quakereportdb",
+    configureDbContextOptions: options => options.UseNpgsql(npgsql => npgsql.UseNetTopologySuite()));
 builder.AddAzureBlobServiceClient("blobs");
 builder.Services.AddHttpClient("turnstile", client =>
 {
@@ -57,6 +60,8 @@ builder.Services.AddScoped<MissingPersonSecurity>();
 builder.Services.AddScoped<ITurnstileValidator, TurnstileValidator>();
 builder.Services.AddScoped<IMissingPersonPhotoStorage, MissingPersonPhotoStorage>();
 builder.Services.AddSingleton<IIngestionApiKeyValidator, IngestionApiKeyValidator>();
+builder.Services.AddHttpClient<IGoogleGeocoder, GoogleGeocoder>(client => client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddScoped<GeocodingCoordinator>();
 
 var app = builder.Build();
 

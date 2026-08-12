@@ -1,8 +1,9 @@
 using QuakeReport.Contracts.Enums;
+using NetTopologySuite.Geometries;
 
 namespace QuakeReport.Data.Models;
 
-public class CollectionPoint
+public class CollectionPoint : IGeocodableEntity
 {
     public Guid Id { get; set; }
     public required Guid EarthquakeId { get; set; }
@@ -11,8 +12,7 @@ public class CollectionPoint
     public string? OrganizationName { get; set; }
     public required string Address { get; set; }
     public string? SearchText { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
+    public Point? Location { get; set; }
     public string? Description { get; set; }
     public required string NeedsSummary { get; set; }
     public required string ReceivingInstructions { get; set; }

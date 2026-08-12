@@ -1,0 +1,68 @@
+@page "/ubicaciones/admin"
+@inject QuakeReportApiClient ApiClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Revisión de ubicaciones - Terremoto.com.co</PageTitle>
+<MudText Typo="Typo.h5">Ubicaciones pendientes</MudText>
+<MudText Class="mb-4">Resultados que requieren revisión manual. Esta página está protegida por Cloudflare Access.</MudText>
+
+@if (_error is not null) { <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert> }
+@if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay ubicaciones pendientes.</MudAlert> }
+
+@foreach (var item in _items)
+{
+    <MudPaper Class="pa-4 mb-3">
+        <MudText Typo="Typo.h6">@item.EntityType</MudText>
+        <MudText>@item.Address</MudText>
+        <MudText Typo="Typo.body2">@item.Reason</MudText>
+        @if (!string.IsNullOrWhiteSpace(item.FormattedAddress)) { <MudText Typo="Typo.body2">Candidato: @item.FormattedAddress (@item.Granularity)</MudText> }
+        <MudStack Row="true" Wrap="Wrap.Wrap" Class="mt-2">
+            <MudButton OnClick="@(() => Edit(item))">Buscar o fijar</MudButton>
+            <MudButton OnClick="@(() => RetryAsync(item.Id))">Reintentar</MudButton>
+            <MudButton Color="Color.Error" OnClick="@(() => DismissAsync(item.Id))">Descartar</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4 mt-4">
+        <MudText Typo="Typo.h6">Resolver ubicación</MudText>
+        <AddressSearch @bind-Address="_address" Latitude="_latitude" Longitude="_longitude" OnPlaceSelected="OnPlaceSelected" />
+        <MudNumericField T="double?" Label="Latitud" @bind-Value="_latitude" />
+        <MudNumericField T="double?" Label="Longitud" @bind-Value="_longitude" />
+        <MudButton Class="mt-2" Variant="Variant.Filled" Color="Color.Primary" OnClick="ResolveAsync">Guardar ubicación</MudButton>
+        <MudButton Class="mt-2 ml-2" OnClick="@(() => _editing = null)">Cancelar</MudButton>
+    </MudPaper>
+}
+
+@code {
+    private IReadOnlyList<GeocodingReviewItemResponse> _items = [];
+    private GeocodingReviewItemResponse? _editing;
+    private string? _address, _error;
+    private double? _latitude, _longitude;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _error = null;
+            var review = await ApiClient.GetGeocodingReviewItemsAsync(GeocodingReviewStatus.NeedsReview);
+            var errors = await ApiClient.GetGeocodingReviewItemsAsync(GeocodingReviewStatus.ProviderError);
+            _items = review.Concat(errors).OrderByDescending(item => item.LastAttemptAt).ToList();
+        }
+        catch (Exception exception) { _error = exception.Message; }
+    }
+    private void Edit(GeocodingReviewItemResponse item) { _editing = item; _address = item.Address; _latitude = item.CandidateLatitude; _longitude = item.CandidateLongitude; }
+    private void OnPlaceSelected((string Address, double Latitude, double Longitude) value) { _address = value.Address; _latitude = value.Latitude; _longitude = value.Longitude; }
+    private async Task<string?> ModeratorAsync() { var state = await AuthenticationStateProvider.GetAuthenticationStateAsync(); return state.User.FindFirst("email")?.Value ?? state.User.Identity?.Name; }
+    private async Task ResolveAsync()
+    {
+        if (_editing is null || _latitude is null || _longitude is null) { _error = "Indica una latitud y longitud válidas."; return; }
+        await ApiClient.ResolveGeocodingReviewAsync(_editing.Id, new(_latitude.Value, _longitude.Value, await ModeratorAsync()));
+        _editing = null; await LoadAsync();
+    }
+    private async Task RetryAsync(Guid id) { await ApiClient.RetryGeocodingReviewAsync(id); await LoadAsync(); }
+    private async Task DismissAsync(Guid id) { await ApiClient.DismissGeocodingReviewAsync(id, new(await ModeratorAsync())); await LoadAsync(); }
+}

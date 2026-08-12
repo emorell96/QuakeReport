@@ -4,6 +4,7 @@ using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.Tests;
 
@@ -46,8 +47,7 @@ public class EarthquakeTests
             Name = "Second event",
             Magnitude = 5.1,
             OccurredAt = DateTimeOffset.UtcNow,
-            EpicenterLatitude = 0,
-            EpicenterLongitude = 0,
+            Location = GeoPoint.FromCoordinates(0, 0),
             IsActive = true,
         });
         await db.SaveChangesAsync();

@@ -1,3 +1,6 @@
+using NetTopologySuite.Geometries;
+using System.Diagnostics.CodeAnalysis;
+
 namespace QuakeReport.Data.Models;
 
 /// <summary>
@@ -8,7 +11,7 @@ namespace QuakeReport.Data.Models;
 /// currently only ever seeds one (the Colombia M7.4 quake); switching to a
 /// future quake is just flipping this flag, no code or schema change.
 /// </summary>
-public class Earthquake
+public class Earthquake : IEntityWithLocation
 {
     public Guid Id { get; set; }
 
@@ -19,9 +22,8 @@ public class Earthquake
 
     public required DateTimeOffset OccurredAt { get; set; }
 
-    public required double EpicenterLatitude { get; set; }
-
-    public required double EpicenterLongitude { get; set; }
+    [AllowNull]
+    public required Point Location { get; set; }
 
     /// <summary>Origin of the data, e.g. "USGS:us7000abcd". Null for manually-entered events.</summary>
     public string? Source { get; set; }

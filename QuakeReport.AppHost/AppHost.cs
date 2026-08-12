@@ -45,6 +45,7 @@ var cloudflareCertificateId = builder.AddParameter(
 
 var postgres = builder.AddAzurePostgresFlexibleServer("postgres")
     .RunAsContainer(container => container
+        .WithImage("postgis/postgis", "16-3.6")
         .WithDataVolume()
         .WithLifetime(ContainerLifetime.Persistent))
     .ConfigureInfrastructure(infrastructure =>
@@ -72,6 +73,14 @@ var postgres = builder.AddAzurePostgresFlexibleServer("postgres")
         {
             Mode = PostgreSqlFlexibleServerHighAvailabilityMode.Disabled,
         };
+
+        infrastructure.Add(new PostgreSqlFlexibleServerConfiguration("postgres_postgis_extension", "2024-08-01")
+        {
+            Parent = server,
+            Name = "azure.extensions",
+            Source = "user-override",
+            Value = "postgis",
+        });
     });
 
 var quakeReportDb = postgres.AddDatabase("quakereportdb");
@@ -109,11 +118,20 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
     .WithEnvironment("Turnstile__SecretKey", turnstileSecretKey)
     .WithEnvironment("Moderation__ApiKey", moderationApiKey)
     .WithEnvironment("Ingestion__ApiKey", ingestionApiKey)
+    .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
     .PublishAsAzureContainerApp((_, app) =>
     {
         app.Template.Scale.MinReplicas = 0;
         app.Template.Scale.MaxReplicas = 3;
     });
+
+var geocodingWorker = builder.AddProject<Projects.QuakeReport_GeocodingWorker>("geocodingworker")
+    .WithReference(quakeReportDb)
+    .WaitFor(quakeReportDb)
+    .WaitForCompletion(migrationService)
+    .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
+    .WithExplicitStart()
+    .PublishAsAzureContainerAppJob();
 
 // Azure Container Apps automatically configures ASP.NET Core data protection.
 // Give the Blazor frontend its own workload identity so that configuration does
@@ -166,6 +184,7 @@ if (builder.ExecutionContext.IsPublishMode)
 {
     migrationService.WithEnvironment("DOTNET_ENVIRONMENT", "Production");
     apiService.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production");
+    geocodingWorker.WithEnvironment("DOTNET_ENVIRONMENT", "Production");
     webFrontend.WithEnvironment("ASPNETCORE_ENVIRONMENT", "Production");
 }
 

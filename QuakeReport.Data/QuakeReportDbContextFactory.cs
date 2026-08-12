@@ -9,7 +9,8 @@ public sealed class QuakeReportDbContextFactory : IDesignTimeDbContextFactory<Qu
     public QuakeReportDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<QuakeReportDbContext>()
-            .UseNpgsql("Host=localhost;Port=5432;Database=quakereport;Username=postgres;Password=postgres")
+            .UseNpgsql("Host=localhost;Port=5432;Database=quakereport;Username=postgres;Password=postgres",
+                npgsql => npgsql.UseNetTopologySuite())
             .Options;
         return new QuakeReportDbContext(options);
     }

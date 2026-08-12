@@ -101,6 +101,7 @@ app.Use(async (context, next) =>
         (context.Request.Path.StartsWithSegments("/acopios/admin") ||
          context.Request.Path.StartsWithSegments("/refugios/admin") ||
          context.Request.Path.StartsWithSegments("/ayuda/admin") ||
+         context.Request.Path.StartsWithSegments("/ubicaciones/admin") ||
          context.Request.Path.StartsWithSegments("/donacion-sangre/admin")) &&
         context.User.Identity?.IsAuthenticated != true)
     {

@@ -7,6 +7,7 @@ using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data.Models;
+using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.Tests;
 
@@ -275,8 +276,8 @@ public class ReportsControllerTests
         Assert.AreEqual(request.DamageSigns, entity.DamageSigns);
         Assert.AreEqual(request.StructureType, entity.StructureType);
         Assert.AreEqual(request.StructureSize, entity.StructureSize);
-        Assert.AreEqual(request.Latitude, entity.Latitude);
-        Assert.AreEqual(request.Longitude, entity.Longitude);
+        Assert.AreEqual(request.Latitude, entity.Location.Y);
+        Assert.AreEqual(request.Longitude, entity.Location.X);
         Assert.AreEqual(request.Address, entity.Address);
         Assert.AreEqual(response.Id, created.RouteValues!["id"]);
     }
@@ -477,8 +478,7 @@ public class ReportsControllerTests
             DamageSigns = DamageSign.None,
             StructureType = structureType,
             StructureSize = structureSize,
-            Latitude = 4,
-            Longitude = -74,
+            Location = GeoPoint.FromCoordinates(4, -74),
             CreatedAt = createdAt,
         };
 }

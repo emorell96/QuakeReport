@@ -1,11 +1,13 @@
 using QuakeReport.Contracts.Enums;
+using NetTopologySuite.Geometries;
+using System.Diagnostics.CodeAnalysis;
 
 namespace QuakeReport.Data.Models;
 
 /// <summary>
 /// A citizen-submitted damage report. Anonymous - no reporter identity is captured.
 /// </summary>
-public class DamageReport
+public class DamageReport : IGeocodableEntity
 {
     public Guid Id { get; set; }
 
@@ -27,9 +29,8 @@ public class DamageReport
     /// <summary>Optional - rough proxy for how many people are affected.</summary>
     public StructureSize? StructureSize { get; set; }
 
-    public required double Latitude { get; set; }
-
-    public required double Longitude { get; set; }
+    [AllowNull]
+    public required Point Location { get; set; }
 
     /// <summary>Optional free-text or reverse-geocoded address.</summary>
     public string? Address { get; set; }
