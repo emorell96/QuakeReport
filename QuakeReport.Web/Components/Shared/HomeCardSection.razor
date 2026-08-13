@@ -1,0 +1,25 @@
+@typeparam TItem
+
+<SectionTitle Title="@Title" Actions="@HeaderActions" Typo="@TitleTypo" />
+<TemplateGrid TItem="TItem"
+              Items="@Items"
+              Loading="@Loading"
+              EmptyText="@EmptyText"
+              ItemTemplate="@ItemTemplate"
+              ActionTemplate="@FooterActions"
+              Class="@GridClass"
+              Spacing="@Spacing" />
+<MudDivider DividerType="DividerType.Middle" Class="my-6" />
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = [];
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "No hay elementos para mostrar.";
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+    [Parameter, EditorRequired] public RenderFragment<TItem> ItemTemplate { get; set; } = default!;
+    [Parameter] public RenderFragment? FooterActions { get; set; }
+    [Parameter] public Typo TitleTypo { get; set; } = Typo.h4;
+    [Parameter] public string? GridClass { get; set; }
+    [Parameter] public int Spacing { get; set; } = 2;
+}
