@@ -15,7 +15,10 @@
         <MudItem xs="12" sm="6" md="3"><MudSelect T="HelpRequestPriority?" Label="Prioridad" @bind-Value="_priority" Clearable="true"><MudSelectItem T="HelpRequestPriority?" Value="@((HelpRequestPriority?)null)">Todas</MudSelectItem>@foreach (var value in Enum.GetValues<HelpRequestPriority>()) { <MudSelectItem T="HelpRequestPriority?" Value="@((HelpRequestPriority?)value)">@value</MudSelectItem> }</MudSelect></MudItem>
         <MudItem xs="12" sm="6" md="4"><MudSelect T="HelpRequestSortOption" Label="Ordenar" @bind-Value="_sort"><MudSelectItem Value="HelpRequestSortOption.HighestPriority">Mayor urgencia</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.Newest">Más recientes</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.RecentlyUpdated">Actualizadas recientemente</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.NeededSoon">Necesidad más próxima</MudSelectItem></MudSelect></MudItem>
     </MudGrid>
-    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="ReloadAsync">Buscar</MudButton>
+    <MudStack Row="true" Spacing="2" Class="mt-3 responsive-actions">
+        <MudButton Variant="Variant.Outlined" OnClick="ReloadAsync">Buscar</MudButton>
+        <FindClosestButton FindAsync="FindClosestAsync" />
+    </MudStack>
 </MudPaper>
 @if (_loading) { <MudProgressCircular Indeterminate="true" Color="Color.Primary" /> }
 else if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay solicitudes de ayuda para mostrar.</MudAlert> }
@@ -124,6 +127,27 @@ else {
             item.Title,
             item.NeedDetails,
             Navigation.ToAbsoluteUri($"/ayuda/{item.Id}").ToString());
+    }
+
+    private async Task<string?> FindClosestAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<HelpRequestSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new HelpRequestSearchFilter
+            {
+                EarthquakeId = null,
+                SearchText = _query,
+                Priority = _priority,
+                Sort = _sort,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchHelpRequestsAsync(request);
+        return result.Results.FirstOrDefault() is { } helpRequest
+            ? $"/ayuda/{helpRequest.Id}"
+            : null;
     }
 
     private static Color PriorityColor(HelpRequestPriority priority) =>

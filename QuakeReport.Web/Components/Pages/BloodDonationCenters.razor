@@ -6,7 +6,13 @@
 <PageTitle>Donación de sangre - Terremoto.com.co</PageTitle>
 <MudText Typo="Typo.h5">Donación de sangre</MudText><MudButton Href="/donacion-sangre/nuevo" Class="my-4" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Bloodtype">Registrar centro</MudButton>
 <MudAlert Severity="Severity.Info" Class="mb-4">Confirma directamente con el centro la disponibilidad, los requisitos y los horarios. Esta información no representa inventario médico en tiempo real.</MudAlert>
-<MudPaper Class="pa-4 mb-4"><MudTextField Label="Buscar" @bind-Value="_query"/><MudButton Class="mt-3" OnClick="ReloadAsync">Buscar</MudButton></MudPaper>
+<MudPaper Class="pa-4 mb-4">
+    <MudTextField Label="Buscar" @bind-Value="_query" />
+    <MudStack Row="true" Spacing="2" Class="mt-3 responsive-actions">
+        <MudButton OnClick="ReloadAsync">Buscar</MudButton>
+        <FindClosestButton FindAsync="FindClosestAsync" />
+    </MudStack>
+</MudPaper>
 @if(_loading){<MudProgressCircular Indeterminate="true"/>}else if(_items.Count==0){<MudAlert Severity="Severity.Info">No hay centros de donación para mostrar.</MudAlert>}else{<MudGrid Spacing="2">@foreach(var center in _items){<MudItem xs="12" md="6"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@center.Name</MudText><MudChip T="string" Size="Size.Small">@BloodDonationDisplay.Status(center.OperationalStatus)</MudChip>@if(center.ModerationStatus==BloodDonationModerationStatus.Pending){<MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>}else if(center.Source==BloodDonationSource.Official){<MudChip T="string" Color="Color.Info" Size="Size.Small">Oficial</MudChip>}else{<MudChip T="string" Color="Color.Success" Size="Size.Small">Verificado</MudChip>}<MudText Typo="Typo.body2">@center.Address</MudText><MudText Class="mt-2"><strong>Grupos:</strong> @BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText><MudText Typo="Typo.body2"><strong>Componentes:</strong> @BloodDonationDisplay.Components(center.Components)</MudText><MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-3">Ver detalles</MudButton><MudButton Href="@center.GoogleMapsUrl" Target="_blank" Size="Size.Small">Google Maps</MudButton><MudButton Size="Size.Small" OnClick="@(() => ShareAsync(center))">Compartir</MudButton></MudCardContent></MudCard></MudItem>}}</MudGrid>}
 @if(_totalPages>1){<MudPagination Class="mt-5" Count="_totalPages" Selected="_page" SelectedChanged="OnPageChangedAsync"/>}
 @code {
@@ -87,6 +93,25 @@
             center.Name,
             "Centro de donación de sangre",
             Navigation.ToAbsoluteUri($"/donacion-sangre/{center.Id}").ToString());
+    }
+
+    private async Task<string?> FindClosestAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<BloodDonationCenterSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new BloodDonationCenterSearchFilter
+            {
+                EarthquakeId = null,
+                SearchText = _query,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchBloodDonationCentersAsync(request);
+        return result.Results.FirstOrDefault() is { } center
+            ? $"/donacion-sangre/{center.Id}"
+            : null;
     }
 
     public void Dispose()

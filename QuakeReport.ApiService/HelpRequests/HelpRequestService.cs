@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
+using QuakeReport.Data.Geospatial;
 using QuakeReport.Data.Models;
 using StorageGenerics.Core.Contracts;
 
@@ -14,7 +15,9 @@ public sealed record HelpRequestQueryCriteria(
     HelpNeedCategory? Category,
     HelpRequestStatus? Status,
     HelpRequestModerationStatus? ModerationStatus,
-    HelpRequestSortOption Sort);
+    HelpRequestSortOption Sort,
+    double? Latitude,
+    double? Longitude);
 
 public interface IHelpRequestService
 {
@@ -88,6 +91,18 @@ public sealed class HelpRequestService(
         {
             var normalized = SearchTextNormalizer.Normalize(criteria.SearchText);
             query = query.Where(request => request.SearchText!.Contains(normalized));
+        }
+
+        if (criteria.Latitude is not null && criteria.Longitude is not null)
+        {
+            return query
+                .Where(request => request.Location != null)
+                .OrderByDistanceFrom(
+                    GeoPoint.FromCoordinates(
+                        criteria.Latitude.Value,
+                        criteria.Longitude.Value),
+                    db.Database.IsNpgsql())
+                .ThenBy(request => request.Id);
         }
 
         return criteria.Sort switch

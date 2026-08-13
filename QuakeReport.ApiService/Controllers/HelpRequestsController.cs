@@ -57,7 +57,9 @@ public class HelpRequestsController(
             null,
             null,
             null,
-            HelpRequestSortOption.HighestPriority);
+            HelpRequestSortOption.HighestPriority,
+            null,
+            null);
         var ordered = helpRequests.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(item => item.ToSummaryResponse());
         var result = await projected.ToPagedResultAsync(
@@ -95,7 +97,9 @@ public class HelpRequestsController(
             filter.Category,
             filter.Status,
             filter.ModerationStatus,
-            filter.Sort);
+            filter.Sort,
+            filter.CenterPoint?.Latitude,
+            filter.CenterPoint?.Longitude);
         var ordered = helpRequests.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(item => item.ToSummaryResponse());
         var result = await projected.ToPagedResultAsync(

@@ -171,7 +171,7 @@ public sealed class HelpRequestSearchFilterValidator : AbstractValidator<HelpReq
         HelpNeedCategory.Security |
         HelpNeedCategory.Other;
 
-    public HelpRequestSearchFilterValidator()
+    public HelpRequestSearchFilterValidator(IValidator<GeoPointQuery> geoPointValidator)
     {
         RuleFor(filter => filter.Sort)
             .IsInEnum();
@@ -187,6 +187,10 @@ public sealed class HelpRequestSearchFilterValidator : AbstractValidator<HelpReq
 
         RuleFor(filter => filter.Category)
             .Must(value => value is null || IsValidCategories(value.Value));
+
+        RuleFor(filter => filter.CenterPoint!)
+            .SetValidator(geoPointValidator)
+            .When(filter => filter.CenterPoint is not null);
     }
 
     private static bool IsDefined<TEnum>(TEnum? value)

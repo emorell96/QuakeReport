@@ -25,6 +25,7 @@
             <MudSelectItem Value="CollectionPointSortOption.Name">Nombre</MudSelectItem>
         </MudSelect>
         <MudButton OnClick="SearchAsync">Buscar</MudButton>
+        <FindClosestButton FindAsync="FindClosestAsync" />
     </MudStack>
 </MudPaper>
 @if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay centros de acopio para mostrar.</MudAlert> }
@@ -143,4 +144,26 @@ else
             CollectionPointOperationalStatus.Closed => "Cerrado",
             _ => status.ToString(),
         };
+
+    private async Task<string?> FindClosestAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<CollectionPointSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new CollectionPointSearchFilter
+            {
+                EarthquakeId = null,
+                SearchText = _query,
+                OperationalStatus = _status,
+                ModerationStatus = _moderationStatus,
+                Sort = _sort,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchCollectionPointsAsync(request);
+        return result.Results.FirstOrDefault() is { } point
+            ? $"/collection-points/{point.Id}"
+            : null;
+    }
 }

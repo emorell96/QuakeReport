@@ -58,6 +58,7 @@ public sealed record HelpRequestSearchFilter
     public HelpRequestStatus? Status { get; init; }
     public HelpRequestModerationStatus? ModerationStatus { get; init; }
     public HelpRequestSortOption Sort { get; init; } = HelpRequestSortOption.HighestPriority;
+    public GeoPointQuery? CenterPoint { get; init; }
 }
 
 public sealed record MissingPersonSearchFilter

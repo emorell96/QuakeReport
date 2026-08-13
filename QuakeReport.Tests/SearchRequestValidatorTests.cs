@@ -80,10 +80,13 @@ public sealed class SearchRequestValidatorTests
             .ValidateAsync(new CollectionPointSearchFilter { CenterPoint = invalidPoint });
         var shelterResult = await new ShelterSearchFilterValidator(geoPointValidator)
             .ValidateAsync(new ShelterSearchFilter { CenterPoint = invalidPoint });
+        var helpRequestResult = await new HelpRequestSearchFilterValidator(geoPointValidator)
+            .ValidateAsync(new HelpRequestSearchFilter { CenterPoint = invalidPoint });
 
         Assert.IsTrue(bloodResult.Errors.Any(error => error.PropertyName == "CenterPoint.Latitude"));
         Assert.IsTrue(collectionPointResult.Errors.Any(error => error.PropertyName == "CenterPoint.Latitude"));
         Assert.IsTrue(shelterResult.Errors.Any(error => error.PropertyName == "CenterPoint.Latitude"));
+        Assert.IsTrue(helpRequestResult.Errors.Any(error => error.PropertyName == "CenterPoint.Latitude"));
     }
 
     [TestMethod]
