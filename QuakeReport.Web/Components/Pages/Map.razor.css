@@ -1,0 +1,48 @@
+.map-container {
+    height: min(72vh, 780px);
+    min-height: 480px;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+.map-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+}
+
+.map-legend-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid white;
+    border-radius: 50%;
+    color: white;
+    font-size: 0.7rem;
+    font-weight: 700;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+}
+
+::deep .quake-map-info {
+    max-width: 280px;
+    color: #212121;
+}
+
+::deep .quake-map-info h3 {
+    margin: 0.2rem 0 0.5rem;
+    font-size: 1rem;
+}
+
+::deep .quake-map-info p {
+    margin: 0.35rem 0;
+}
+
+@media (max-width: 600px) {
+    .map-container {
+        height: 64vh;
+        min-height: 400px;
+    }
+}

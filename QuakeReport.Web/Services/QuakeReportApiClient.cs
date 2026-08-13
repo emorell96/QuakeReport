@@ -14,6 +14,14 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
 {
     private string ModerationKey => configuration?["Moderation:ApiKey"] ?? string.Empty;
 
+    public async Task<MapOverviewResponse> GetMapOverviewAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var response = await httpClient.GetAsync("/api/map", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<MapOverviewResponse>(cancellationToken))!;
+    }
+
     public async Task<IReadOnlyList<GeocodingReviewItemResponse>> GetGeocodingReviewItemsAsync(GeocodingReviewStatus status, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/geocoding-review?status={status}");

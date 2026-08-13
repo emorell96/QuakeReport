@@ -1,0 +1,376 @@
+@page "/mapa"
+@implements IAsyncDisposable
+@using GoogleMapsComponents
+@using GoogleMapsComponents.Maps
+@inject IConfiguration Configuration
+@inject QuakeReportApiClient ApiClient
+@inject GeolocationService Geolocation
+@inject ISnackbar Snackbar
+
+<PageTitle>Mapa de recursos y reportes</PageTitle>
+
+<SectionTitle Title="Mapa" Subtitle="Recursos, solicitudes y reportes del terremoto activo" />
+<MudAlert Severity="Severity.Warning">Esta pagina aun es experimental. Podria no funcionar correctamente.</MudAlert>
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_loadError is not null)
+{
+    <MudAlert Severity="Severity.Error">@_loadError</MudAlert>
+}
+else if (!_apiKeyConfigured)
+{
+    <MudAlert Severity="Severity.Info">
+        El mapa está listo, pero falta configurar la clave de Google Maps.
+        Define <code>GoogleMaps:ApiKey</code> o <code>GOOGLE_MAPS_API_KEY</code> para habilitarlo.
+    </MudAlert>
+}
+else if (_overview is not null)
+{
+    @if (_overview.Elements.All(element => element.Type == MapElementType.Earthquake))
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            Aún no hay recursos, solicitudes ni reportes con coordenadas para mostrar.
+        </MudAlert>
+    }
+
+    <MudPaper Class="pa-4 mb-4">
+        <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center" Spacing="2">
+            @foreach (var type in MapPresentation.LayerTypes)
+            {
+                var presentation = PresentationFor(type);
+                <MudCheckBox T="bool"
+                             Value="@IsLayerVisible(type)"
+                             ValueChanged="@(visible => SetLayerVisibilityAsync(type, visible))"
+                             Label="@presentation.Label"
+                             Color="Color.Primary" />
+            }
+
+            <MudSpacer />
+
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.MyLocation"
+                       Disabled="@_locating"
+                       OnClick="ShowMyLocationAsync">
+                @(_locating ? "Obteniendo ubicación..." : "Mi ubicación")
+            </MudButton>
+        </MudStack>
+
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="mt-2">
+            @foreach (var type in MapPresentation.LayerTypes.Prepend(MapElementType.Earthquake))
+            {
+                var presentation = PresentationFor(type);
+                <span class="map-legend-item">
+                    <span class="map-legend-dot" style="background-color: @presentation.Color">
+                        @presentation.Glyph
+                    </span>
+                    @presentation.Label
+                </span>
+            }
+        </MudStack>
+    </MudPaper>
+
+    <ErrorBoundary @ref="_mapErrorBoundary">
+        <ChildContent>
+            <div class="map-container">
+                <GoogleMap @ref="_map"
+                           Id="unified-quake-map"
+                           Options="@_mapOptions"
+                           Height="100%"
+                           OnAfterInit="InitializeMapAsync" />
+            </div>
+        </ChildContent>
+        <ErrorContent Context="exception">
+            <MudAlert Severity="Severity.Error">
+                No se pudo cargar Google Maps. Verifica la clave y la configuración de la API.
+            </MudAlert>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    private readonly Dictionary<MapElementType, bool> _visibleLayers =
+        MapPresentation.LayerTypes.ToDictionary(type => type, _ => true);
+    private readonly List<Marker> _dataMarkers = [];
+    private readonly Dictionary<Guid, MapElementResponse> _elementsByMarker = [];
+
+    private MapOverviewResponse? _overview;
+    private GoogleMap? _map;
+    private ErrorBoundary? _mapErrorBoundary;
+    private MapOptions _mapOptions = new();
+    private MarkerClustering? _clustering;
+    private Marker? _earthquakeMarker;
+    private Marker? _userMarker;
+    private InfoWindow? _infoWindow;
+    private bool _apiKeyConfigured;
+    private bool _loading = true;
+    private bool _locating;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _apiKeyConfigured = !string.IsNullOrWhiteSpace(
+            Configuration["GoogleMaps:ApiKey"] ??
+            Configuration["GOOGLE_MAPS_API_KEY"]);
+
+        try
+        {
+            _overview = await ApiClient.GetMapOverviewAsync();
+            _mapOptions = new MapOptions
+            {
+                Center = new LatLngLiteral(
+                    _overview.Earthquake.EpicenterLatitude,
+                    _overview.Earthquake.EpicenterLongitude),
+                Zoom = 8,
+                MapTypeId = MapTypeId.Roadmap,
+                GestureHandling = "cooperative",
+                MapTypeControl = false,
+                StreetViewControl = false,
+                FullscreenControl = true,
+            };
+        }
+        catch (HttpRequestException exception)
+        {
+            _loadError = exception.StatusCode == System.Net.HttpStatusCode.UnprocessableEntity
+                ? "No hay un terremoto activo configurado."
+                : "No pudimos cargar los elementos del mapa. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task InitializeMapAsync()
+    {
+        if (_map?.InteropObject is null || _overview is null)
+        {
+            return;
+        }
+
+        _infoWindow = await InfoWindow.CreateAsync(_map.JsRuntime);
+
+        foreach (var element in _overview.Elements)
+        {
+            var marker = await CreateMarkerAsync(element);
+            _elementsByMarker[marker.Guid] = element;
+
+            if (element.Type == MapElementType.Earthquake)
+            {
+                _earthquakeMarker = marker;
+            }
+            else
+            {
+                _dataMarkers.Add(marker);
+            }
+        }
+
+        _clustering = await MarkerClustering.CreateAsync(
+            _map.JsRuntime,
+            _map.InteropObject,
+            VisibleDataMarkers(),
+            new MarkerClustererOptions
+            {
+                ZoomOnClick = true,
+            });
+
+        await FitVisibleMarkersAsync();
+        StateHasChanged();
+    }
+
+    private async Task<Marker> CreateMarkerAsync(MapElementResponse element)
+    {
+        var marker = await Marker.CreateAsync(
+            _map!.JsRuntime,
+            new MarkerOptions
+            {
+                Map = _map.InteropObject,
+                Position = new LatLngLiteral(element.Latitude, element.Longitude),
+                Title = element.Title,
+                Clickable = true,
+                ZIndex = element.Type == MapElementType.Earthquake ? 1000 : null,
+                Icon = MapPresentation.MarkerIconDataUrl(element),
+            });
+
+        await marker.AddListener<GoogleMapsComponents.Maps.MouseEvent>(
+            "click",
+            async e =>
+            {
+                await e.Stop().ConfigureAwait(false);
+                await OpenInfoWindowAsync(marker, element);
+            });
+
+        return marker;
+    }
+
+    private async Task OpenInfoWindowAsync(Marker marker, MapElementResponse element)
+    {
+        if (_map?.InteropObject is null || _infoWindow is null)
+        {
+            return;
+        }
+
+        await _infoWindow.SetContent(MapPresentation.InfoWindowHtml(element));
+        await _infoWindow.Open(_map.InteropObject, marker);
+    }
+
+    private bool IsLayerVisible(MapElementType type) =>
+        _visibleLayers.GetValueOrDefault(type);
+
+    private async Task SetLayerVisibilityAsync(MapElementType type, bool visible)
+    {
+        _visibleLayers[type] = visible;
+
+        if (_clustering is null)
+        {
+            return;
+        }
+
+        await _infoWindow!.Close();
+        await _clustering.ClearMarkers();
+        await _clustering.AddMarkers(VisibleDataMarkers());
+        await FitVisibleMarkersAsync();
+    }
+
+    private IEnumerable<Marker> VisibleDataMarkers() =>
+        _dataMarkers.Where(marker =>
+            _elementsByMarker.TryGetValue(marker.Guid, out var element) &&
+            IsLayerVisible(element.Type));
+
+    private async Task FitVisibleMarkersAsync()
+    {
+        if (_map?.InteropObject is null || _overview is null)
+        {
+            return;
+        }
+
+        var enabledLayers = _visibleLayers
+            .Where(layer => layer.Value)
+            .Select(layer => layer.Key)
+            .ToHashSet();
+        var visibleElements = MapPresentation
+            .VisibleElements(_overview.Elements, enabledLayers)
+            .ToList();
+
+        if (visibleElements.Count == 0)
+        {
+            return;
+        }
+
+        var bounds = new LatLngBoundsLiteral(
+            new LatLngLiteral(
+                visibleElements[0].Latitude,
+                visibleElements[0].Longitude));
+
+        foreach (var element in visibleElements.Skip(1))
+        {
+            bounds.Extend(element.Latitude, element.Longitude);
+        }
+
+        await _map.InteropObject.FitBounds(bounds, 48);
+
+        if (visibleElements.Count == 1)
+        {
+            await _map.InteropObject.SetZoom(10);
+        }
+    }
+
+    private async Task ShowMyLocationAsync()
+    {
+        if (_map?.InteropObject is null)
+        {
+            return;
+        }
+
+        _locating = true;
+
+        try
+        {
+            var result = await Geolocation.GetCurrentPositionAsync();
+            if (result is not GeolocationResult.Success position)
+            {
+                var failure = (GeolocationResult.Failure)result;
+                Snackbar.Add(GeolocationMessages.For(failure.Reason), Severity.Warning);
+                return;
+            }
+
+            var coordinates = new LatLngLiteral(position.Latitude, position.Longitude);
+
+            if (_userMarker is null)
+            {
+                _userMarker = await Marker.CreateAsync(
+                    _map.JsRuntime,
+                    new MarkerOptions
+                    {
+                        Map = _map.InteropObject,
+                        Position = coordinates,
+                        Title = "Mi ubicación",
+                        Clickable = false,
+                        ZIndex = 2000,
+                        Icon = new Symbol
+                        {
+                            Path = SymbolPath.CIRCLE,
+                            FillColor = "#1565c0",
+                            FillOpacity = 1,
+                            StrokeColor = "#ffffff",
+                            StrokeOpacity = 1,
+                            StrokeWeight = 3,
+                            Scale = 9,
+                        },
+                    });
+            }
+            else
+            {
+                await _userMarker.SetPosition(coordinates);
+            }
+
+            await _map.InteropObject.PanTo(coordinates);
+            await _map.InteropObject.SetZoom(14);
+        }
+        finally
+        {
+            _locating = false;
+        }
+    }
+
+    private MapElementPresentation PresentationFor(MapElementType type) =>
+        MapPresentation.For(new MapElementResponse(
+            Guid.Empty,
+            Guid.Empty,
+            type,
+            string.Empty,
+            null,
+            null,
+            0,
+            0));
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_clustering is not null)
+        {
+            await _clustering.ClearMarkers();
+            _clustering.Dispose();
+        }
+
+        foreach (var marker in _dataMarkers)
+        {
+            await marker.SetMap(null);
+            marker.Dispose();
+        }
+
+        if (_earthquakeMarker is not null)
+        {
+            await _earthquakeMarker.SetMap(null);
+            _earthquakeMarker.Dispose();
+        }
+
+        if (_userMarker is not null)
+        {
+            await _userMarker.SetMap(null);
+            _userMarker.Dispose();
+        }
+
+        _infoWindow?.Dispose();
+    }
+}

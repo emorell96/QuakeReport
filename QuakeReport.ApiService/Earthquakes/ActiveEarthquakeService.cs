@@ -21,7 +21,9 @@ public interface IActiveEarthquakeService
 public sealed class ActiveEarthquakeService(QuakeReportDbContext dbContext) : IActiveEarthquakeService
 {
     public async Task<Earthquake?> GetActiveEarthquakeAsync(CancellationToken cancellationToken) =>
-        await dbContext.Earthquakes.SingleOrDefaultAsync(e => e.IsActive, cancellationToken);
+        await dbContext.Earthquakes
+            .AsNoTracking()
+            .SingleOrDefaultAsync(e => e.IsActive, cancellationToken);
 
     public async Task<Guid?> ResolveEarthquakeIdAsync(
         Guid? requestedEarthquakeId,

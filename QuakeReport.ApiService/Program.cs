@@ -6,6 +6,7 @@ using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.GeocodingReview;
 using QuakeReport.ApiService.HelpRequests;
 using QuakeReport.ApiService.Ingestion;
+using QuakeReport.ApiService.Map;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Persistence;
@@ -126,6 +127,7 @@ builder.Services.AddScoped<IBloodDonationCenterService, BloodDonationCenterServi
 builder.Services.AddScoped<ICollectionPointService, CollectionPointService>();
 builder.Services.AddScoped<IHelpRequestService, HelpRequestService>();
 builder.Services.AddScoped<IMissingPersonService, MissingPersonService>();
+builder.Services.AddScoped<IMapService, MapService>();
 builder.Services.AddScoped<IDamageReportService, DamageReportService>();
 builder.Services.AddScoped<IShelterService, ShelterService>();
 builder.Services.AddScoped<IIngestionPersistenceService, IngestionPersistenceService>();
