@@ -20,7 +20,7 @@
 
 <HomeCardSection TItem="HelpRequestSummaryResponse"
                  Title="Solicitudes de ayuda"
-                 TitleTypo="Typo.h6"
+                 TitleTypo="Typo.h4"
                  Items="_helpRequests"
                  Loading="_loading"
                  EmptyText="No hay solicitudes de ayuda activas publicadas.">
@@ -41,10 +41,49 @@
                 }
                 <MudText Typo="Typo.body2">@request.RequesterName Â· @request.Address</MudText>
                 <MudText Class="mt-2">@request.NeedDetails</MudText>
-                <MudButton Href="@($"/ayuda/{request.Id}")" Size="Size.Small" Class="mt-2">Ver detalles</MudButton>
+                
             </MudCardContent>
+            <MudCardActions>
+                <MudButton Href="@($"/ayuda/{request.Id}")" Size="Size.Small" Class="mt-2">Ver detalles</MudButton>
+                <MudButton Href="@request.GoogleMapsUrl" Target="_blank" Class="mt-3">Abrir en Google Maps</MudButton>
+            </MudCardActions>
         </MudCard>
     </ItemTemplate>
+</HomeCardSection>
+
+<HomeCardSection TItem="MissingPersonSummaryResponse"
+                 Title="Personas extraviadas"
+                 Items="_missingPeople"
+                 Loading="_loading"
+                 EmptyText="No hay personas extraviadas registradas.">
+    <HeaderActions>
+        <MudButton Href="/missing-people/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd">Registrar persona</MudButton>
+        <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
+    </HeaderActions>
+    <ItemTemplate Context="person">
+        <MudCard Class="h-100" @onclick="() => NavigateToMissingPerson(person.Id)" Style="cursor:pointer">
+            @if (!string.IsNullOrWhiteSpace(person.PhotoUrl))
+            {
+                <MudCardMedia Image="@person.PhotoUrl" Height="180" />
+            }
+            <MudCardContent>
+                <MudText Typo="Typo.h6">@person.FullName</MudText>
+                @if (person.IdentificationLastFour is not null)
+                {
+                    <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText>
+                }
+                <MudText Typo="Typo.body2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
+                <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
+
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
+            </MudCardActions>
+        </MudCard>
+    </ItemTemplate>
+    <FooterActions>
+        <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
+    </FooterActions>
 </HomeCardSection>
 
 <HomeCardSection TItem="BloodDonationCenterSummaryResponse"
@@ -67,8 +106,11 @@
                 }
                 <MudText Typo="Typo.body2">@center.Address</MudText>
                 <MudText Typo="Typo.body2">@BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText>
-                <MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
             </MudCardContent>
+            <MudCardActions>
+                <MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+                <MudButton Href="@center.GoogleMapsUrl" Target="_blank" Class="mt-3">Abrir en Google Maps</MudButton>
+            </MudCardActions>
         </MudCard>
     </ItemTemplate>
     <FooterActions>
@@ -98,8 +140,12 @@
                 </MudStack>
                 <MudText>@shelter.Address</MudText>
                 <MudText Typo="Typo.body2">@shelter.Description</MudText>
-                <MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+                
             </MudCardContent>
+            <MudCardActions>
+                <MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+                <MudButton Href="@shelter.GoogleMapsUrl" Target="_blank" Class="mt-3">Abrir en Google Maps</MudButton>
+            </MudCardActions>
         </MudCard>
     </ItemTemplate>
     <FooterActions>
@@ -107,37 +153,7 @@
     </FooterActions>
 </HomeCardSection>
 
-<HomeCardSection TItem="MissingPersonSummaryResponse"
-                 Title="Personas extraviadas"
-                 Items="_missingPeople"
-                 Loading="_loading"
-                 EmptyText="No hay personas extraviadas registradas.">
-    <HeaderActions>
-        <MudButton Href="/missing-people/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd">Registrar persona</MudButton>
-        <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
-    </HeaderActions>
-    <ItemTemplate Context="person">
-        <MudCard Class="h-100" @onclick="() => NavigateToMissingPerson(person.Id)" Style="cursor:pointer">
-            @if (!string.IsNullOrWhiteSpace(person.PhotoUrl))
-            {
-                <MudCardMedia Image="@person.PhotoUrl" Height="180" />
-            }
-            <MudCardContent>
-                <MudText Typo="Typo.h6">@person.FullName</MudText>
-                @if (person.IdentificationLastFour is not null)
-                {
-                    <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText>
-                }
-                <MudText Typo="Typo.body2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
-                <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
-                <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
-            </MudCardContent>
-        </MudCard>
-    </ItemTemplate>
-    <FooterActions>
-        <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
-    </FooterActions>
-</HomeCardSection>
+
 
 <HomeCardSection TItem="CollectionPointSummaryResponse"
                  Title="Centros de acopio"
@@ -154,8 +170,11 @@
                 <MudText Typo="Typo.h6">@point.Name</MudText>
                 <MudText>@point.Address</MudText>
                 <MudText Typo="Typo.body2"><strong>Necesidades:</strong> @point.NeedsSummary</MudText>
-                <MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
             </MudCardContent>
+            <MudCardActions>
+                <MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+                <MudButton Href="@point.GoogleMapsUrl" Target="_blank" Class="mt-3">Abrir en Google Maps</MudButton>
+            </MudCardActions>
         </MudCard>
     </ItemTemplate>
     <FooterActions>
