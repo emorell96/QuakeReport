@@ -1,10 +1,10 @@
 using NetTopologySuite.Geometries;
+using StorageGenerics.Core.Contracts;
 
 namespace QuakeReport.Data.Models;
 
-public interface IEntityWithLocation
+public interface IEntityWithLocation : IEntity<Guid>
 {
-    Guid Id { get; }
     Point? Location { get; set; }
 }
 

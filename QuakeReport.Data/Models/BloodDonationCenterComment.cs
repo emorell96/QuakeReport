@@ -1,6 +1,8 @@
+using StorageGenerics.Core.Contracts;
+
 namespace QuakeReport.Data.Models;
 
-public class BloodDonationCenterComment
+public class BloodDonationCenterComment : IEntity<Guid>
 {
     public Guid Id { get; set; }
     public required Guid BloodDonationCenterId { get; set; }

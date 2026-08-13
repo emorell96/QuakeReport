@@ -1,8 +1,9 @@
 using QuakeReport.Contracts.Enums;
+using StorageGenerics.Core.Contracts;
 
 namespace QuakeReport.Data.Models;
 
-public class IngestionSubmission
+public class IngestionSubmission : IEntity<Guid>
 {
     public Guid Id { get; set; }
     public required Guid EarthquakeId { get; set; }

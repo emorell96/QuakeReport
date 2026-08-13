@@ -1,6 +1,8 @@
+using StorageGenerics.Core.Contracts;
+
 namespace QuakeReport.Data.Models;
 
-public class HelpRequestComment
+public class HelpRequestComment : IEntity<Guid>
 {
     public Guid Id { get; set; }
     public required Guid HelpRequestId { get; set; }
