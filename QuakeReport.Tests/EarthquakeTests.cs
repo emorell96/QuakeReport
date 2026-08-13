@@ -38,6 +38,33 @@ public class EarthquakeTests
     }
 
     [TestMethod]
+    public async Task ResolveEarthquakeIdUsesExplicitIdWithoutRequiringAnActiveEarthquake()
+    {
+        using var db = TestDb.Create();
+        db.Earthquakes.RemoveRange(db.Earthquakes);
+        await db.SaveChangesAsync();
+        var service = new ActiveEarthquakeService(db);
+        var requestedId = Guid.NewGuid();
+
+        var result = await service.ResolveEarthquakeIdAsync(
+            requestedId,
+            CancellationToken.None);
+
+        Assert.AreEqual(requestedId, result);
+    }
+
+    [TestMethod]
+    public async Task ResolveEarthquakeIdUsesActiveEarthquakeWhenIdIsNull()
+    {
+        using var db = TestDb.Create();
+        var service = new ActiveEarthquakeService(db);
+
+        var result = await service.ResolveEarthquakeIdAsync(null, CancellationToken.None);
+
+        Assert.AreEqual(QuakeReport.Data.QuakeReportDbContext.ColombiaEarthquakeId, result);
+    }
+
+    [TestMethod]
     public async Task ActiveEarthquakeServiceRejectsMultipleActiveEarthquakes()
     {
         using var db = TestDb.Create();

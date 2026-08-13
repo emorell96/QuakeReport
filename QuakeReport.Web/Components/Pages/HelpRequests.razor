@@ -15,7 +15,10 @@
         <MudItem xs="12" sm="6" md="3"><MudSelect T="HelpRequestPriority?" Label="Prioridad" @bind-Value="_priority" Clearable="true"><MudSelectItem T="HelpRequestPriority?" Value="@((HelpRequestPriority?)null)">Todas</MudSelectItem>@foreach (var value in Enum.GetValues<HelpRequestPriority>()) { <MudSelectItem T="HelpRequestPriority?" Value="@((HelpRequestPriority?)value)">@value</MudSelectItem> }</MudSelect></MudItem>
         <MudItem xs="12" sm="6" md="4"><MudSelect T="HelpRequestSortOption" Label="Ordenar" @bind-Value="_sort"><MudSelectItem Value="HelpRequestSortOption.HighestPriority">Mayor urgencia</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.Newest">Más recientes</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.RecentlyUpdated">Actualizadas recientemente</MudSelectItem><MudSelectItem Value="HelpRequestSortOption.NeededSoon">Necesidad más próxima</MudSelectItem></MudSelect></MudItem>
     </MudGrid>
-    <MudButton Class="mt-3" Variant="Variant.Outlined" OnClick="ReloadAsync">Buscar</MudButton>
+    <MudStack Row="true" Spacing="2" Class="mt-3 responsive-actions">
+        <MudButton Variant="Variant.Outlined" OnClick="ReloadAsync">Buscar</MudButton>
+        <FindClosestButton FindAsync="FindClosestAsync" />
+    </MudStack>
 </MudPaper>
 @if (_loading) { <MudProgressCircular Indeterminate="true" Color="Color.Primary" /> }
 else if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay solicitudes de ayuda para mostrar.</MudAlert> }
@@ -34,13 +37,130 @@ else {
 }
 @code {
     private IReadOnlyList<HelpRequestSummaryResponse> _items = [];
-    private string? _query; private HelpRequestPriority? _priority; private HelpRequestSortOption _sort = HelpRequestSortOption.HighestPriority;
-    private int _page = 1, _totalPages; private bool _loading; private CancellationTokenSource? _cts;
-    protected override async Task OnInitializedAsync() => await ReloadAsync();
-    private async Task ReloadAsync() { var cts = new CancellationTokenSource(); var old = Interlocked.Exchange(ref _cts, cts); old?.Cancel(); old?.Dispose(); _loading = true; try { var result = await ApiClient.GetHelpRequestsAsync(_query, _priority, page: _page, pageSize: 20, sort: _sort, cancellationToken: cts.Token); if (ReferenceEquals(_cts, cts)) { _items = result.Items; _totalPages = result.TotalPages; } } catch (OperationCanceledException) when (cts.IsCancellationRequested) { } finally { if (ReferenceEquals(_cts, cts)) _loading = false; } }
-    private async Task OnSearchKeyDown(KeyboardEventArgs args) { if (args.Key == "Enter") { _page = 1; await ReloadAsync(); } }
-    private async Task OnPageChangedAsync(int page) { _page = page; await ReloadAsync(); }
-    private async Task ShareAsync(HelpRequestSummaryResponse item) { await Share.ShareAsync(item.Title, item.NeedDetails, Navigation.ToAbsoluteUri($"/ayuda/{item.Id}").ToString()); }
-    private static Color PriorityColor(HelpRequestPriority priority) => priority switch { HelpRequestPriority.Critical => Color.Error, HelpRequestPriority.High => Color.Warning, _ => Color.Info };
-    public void Dispose() { _cts?.Cancel(); _cts?.Dispose(); }
+    private string? _query;
+    private HelpRequestPriority? _priority;
+    private HelpRequestSortOption _sort = HelpRequestSortOption.HighestPriority;
+    private int _page = 1;
+    private int _totalPages;
+    private bool _loading;
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _cts, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        _loading = true;
+
+        try
+        {
+            PagedResult<HelpRequestSummaryResponse> result;
+            if (string.IsNullOrWhiteSpace(_query) &&
+                _priority is null &&
+                _sort == HelpRequestSortOption.HighestPriority)
+            {
+                result = await ApiClient.GetAllHelpRequestsAsync(
+                    _page,
+                    20,
+                    cancellation.Token);
+            }
+            else
+            {
+                var request = new PagedRequest<HelpRequestSearchFilter>
+                {
+                    PageNumber = _page,
+                    PageSize = 20,
+                    Filter = new HelpRequestSearchFilter
+                    {
+                        EarthquakeId = null,
+                        SearchText = _query,
+                        Priority = _priority,
+                        Sort = _sort,
+                    },
+                };
+                result = await ApiClient.SearchHelpRequestsAsync(
+                    request,
+                    cancellation.Token);
+            }
+
+            if (ReferenceEquals(_cts, cancellation))
+            {
+                _items = result.Results.ToList();
+                _totalPages = result.TotalPages;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_cts, cancellation))
+            {
+                _loading = false;
+            }
+        }
+    }
+    private async Task OnSearchKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            _page = 1;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task OnPageChangedAsync(int page)
+    {
+        _page = page;
+        await ReloadAsync();
+    }
+
+    private async Task ShareAsync(HelpRequestSummaryResponse item)
+    {
+        await Share.ShareAsync(
+            item.Title,
+            item.NeedDetails,
+            Navigation.ToAbsoluteUri($"/ayuda/{item.Id}").ToString());
+    }
+
+    private async Task<string?> FindClosestAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<HelpRequestSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new HelpRequestSearchFilter
+            {
+                EarthquakeId = null,
+                SearchText = _query,
+                Priority = _priority,
+                Sort = _sort,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchHelpRequestsAsync(request);
+        return result.Results.FirstOrDefault() is { } helpRequest
+            ? $"/ayuda/{helpRequest.Id}"
+            : null;
+    }
+
+    private static Color PriorityColor(HelpRequestPriority priority) =>
+        priority switch
+        {
+            HelpRequestPriority.Critical => Color.Error,
+            HelpRequestPriority.High => Color.Warning,
+            _ => Color.Info,
+        };
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
 }

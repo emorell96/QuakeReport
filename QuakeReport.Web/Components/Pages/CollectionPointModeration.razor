@@ -31,7 +31,7 @@
     private string? _officialName, _officialAddress, _officialNeeds, _officialInstructions, _officialError;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task LoadAsync() { try { _items = (await ApiClient.GetPendingCollectionPointsAsync()).Items; } catch { _items = []; } }
+    private async Task LoadAsync() { try { _items = (await ApiClient.GetPendingCollectionPointsAsync()).Results.ToList(); } catch { _items = []; } }
 
     private async Task ModerateAsync(Guid id, CollectionPointModerationStatus status)
     {

@@ -23,5 +23,7 @@ public static class SpatialQueryExtensions
         Point origin,
         double meters)
         where TEntity : class, IEntityWithLocation =>
-        query.Where(entity => entity.Location != null && entity.Location.IsWithinDistance(origin, meters));
+        query.Where(entity =>
+            entity.Location != null &&
+            entity.Location.IsWithinDistance(origin, meters));
 }

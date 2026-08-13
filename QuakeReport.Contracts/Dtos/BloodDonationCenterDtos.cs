@@ -1,13 +1,52 @@
 using QuakeReport.Contracts.Enums;
+
 namespace QuakeReport.Contracts.Dtos;
-public record BloodDonationCenterSummaryResponse(Guid Id,string Name,string? OrganizationName,string Address,BloodDonationCenterType CenterType,BloodTypeFlags BloodTypes,BloodComponentFlags Components,BloodDonationOperationalStatus OperationalStatus,BloodDonationModerationStatus ModerationStatus,BloodDonationSource Source,DateTimeOffset? StartsAt,DateTimeOffset? EndsAt,DateTimeOffset UpdatedAt,string GoogleMapsUrl,bool IsExpired);
-public record BloodDonationCenterResponse(Guid Id,Guid EarthquakeId,string Name,string? OrganizationName,string Address,double? Latitude,double? Longitude,string? Description,string OperatingInstructions,string NeedsSummary,string PublicPhone,string? PublicWhatsApp,string? PublicEmail,BloodDonationCenterType CenterType,BloodTypeFlags BloodTypes,BloodComponentFlags Components,BloodDonationOperationalStatus OperationalStatus,BloodDonationModerationStatus ModerationStatus,BloodDonationSource Source,DateTimeOffset? StartsAt,DateTimeOffset? EndsAt,DateTimeOffset CreatedAt,DateTimeOffset UpdatedAt,string GoogleMapsUrl,bool IsExpired,IReadOnlyList<BloodDonationCenterCommentResponse> Comments);
-public record BloodDonationCenterCommentResponse(Guid Id,string? DisplayName,string Message,DateTimeOffset CreatedAt);
-public record CreateBloodDonationCenterRequest(string Name,string? OrganizationName,string Address,double? Latitude,double? Longitude,string? Description,string OperatingInstructions,string NeedsSummary,string PublicPhone,string? PublicWhatsApp,string? PublicEmail,BloodDonationCenterType CenterType,BloodTypeFlags BloodTypes,BloodComponentFlags Components,DateTimeOffset? StartsAt,DateTimeOffset? EndsAt,bool PrivacyConsent,string TurnstileToken);
-public record UpdateBloodDonationCenterRequest(string Name,string? OrganizationName,string Address,double? Latitude,double? Longitude,string? Description,string OperatingInstructions,string NeedsSummary,string PublicPhone,string? PublicWhatsApp,string? PublicEmail,BloodDonationCenterType CenterType,BloodTypeFlags BloodTypes,BloodComponentFlags Components,DateTimeOffset? StartsAt,DateTimeOffset? EndsAt);
-public record CreateBloodDonationCenterCommentRequest(string? DisplayName,string Message,string TurnstileToken);
+
+public record BloodDonationCenterSummaryResponse(
+    Guid Id, string Name, string? OrganizationName, string Address,
+    BloodDonationCenterType CenterType, BloodTypeFlags BloodTypes, BloodComponentFlags Components,
+    BloodDonationOperationalStatus OperationalStatus, BloodDonationModerationStatus ModerationStatus,
+    BloodDonationSource Source, DateTimeOffset? StartsAt, DateTimeOffset? EndsAt,
+    DateTimeOffset UpdatedAt, string GoogleMapsUrl, bool IsExpired);
+
+public record BloodDonationCenterResponse(
+    Guid Id, Guid EarthquakeId, string Name, string? OrganizationName, string Address,
+    double? Latitude, double? Longitude, string? Description, string OperatingInstructions,
+    string NeedsSummary, string PublicPhone, string? PublicWhatsApp, string? PublicEmail,
+    BloodDonationCenterType CenterType, BloodTypeFlags BloodTypes, BloodComponentFlags Components,
+    BloodDonationOperationalStatus OperationalStatus, BloodDonationModerationStatus ModerationStatus,
+    BloodDonationSource Source, DateTimeOffset? StartsAt, DateTimeOffset? EndsAt,
+    DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt, string GoogleMapsUrl, bool IsExpired,
+    IReadOnlyList<BloodDonationCenterCommentResponse> Comments);
+
+public record BloodDonationCenterCommentResponse(
+    Guid Id, string? DisplayName, string Message, DateTimeOffset CreatedAt);
+
+public record CreateBloodDonationCenterRequest(
+    string Name, string? OrganizationName, string Address, double? Latitude, double? Longitude,
+    string? Description, string OperatingInstructions, string NeedsSummary,
+    string PublicPhone, string? PublicWhatsApp, string? PublicEmail,
+    BloodDonationCenterType CenterType, BloodTypeFlags BloodTypes, BloodComponentFlags Components,
+    DateTimeOffset? StartsAt, DateTimeOffset? EndsAt, bool PrivacyConsent, string TurnstileToken);
+
+public record UpdateBloodDonationCenterRequest(
+    string Name, string? OrganizationName, string Address, double? Latitude, double? Longitude,
+    string? Description, string OperatingInstructions, string NeedsSummary,
+    string PublicPhone, string? PublicWhatsApp, string? PublicEmail,
+    BloodDonationCenterType CenterType, BloodTypeFlags BloodTypes, BloodComponentFlags Components,
+    DateTimeOffset? StartsAt, DateTimeOffset? EndsAt);
+
+public record CreateBloodDonationCenterCommentRequest(
+    string? DisplayName, string Message, string TurnstileToken);
+
 public record UpdateBloodDonationCenterStatusRequest(BloodDonationOperationalStatus Status);
+
 public record UpdateBloodDonationCenterModerationRequest(BloodDonationModerationStatus Status);
+
 public record BloodDonationCenterManagementCodeRequest(string ManagementCode);
-public record BloodDonationCenterAbuseReportRequest(string Reason,string? Details,string TurnstileToken);
-public record CreateBloodDonationCenterResponse(BloodDonationCenterResponse Center,string ManagementCode);
+
+public record BloodDonationCenterAbuseReportRequest(
+    string Reason, string? Details, string TurnstileToken);
+
+public record CreateBloodDonationCenterResponse(
+    BloodDonationCenterResponse Center, string ManagementCode);

@@ -2,12 +2,16 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Controllers;
+using QuakeReport.ApiService.Reports;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
 
 namespace QuakeReport.Tests;
 
@@ -37,16 +41,16 @@ public class ReportsControllerTests
         await db.SaveChangesAsync();
         var controller = CreateController(db);
 
-        var result = await controller.GetAll(cancellationToken: CancellationToken.None);
+        var result = await controller.GetAll(new PaginationRequest(), CancellationToken.None);
 
         var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-        var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
         CollectionAssert.AreEqual(
             new[] { newestMajor.Id, oldestMajor.Id, catastrophic.Id },
-            response.Items.Select(report => report.Id).ToArray());
-        Assert.AreEqual(1, response.Page);
+            response.Results.Select(report => report.Id).ToArray());
+        Assert.AreEqual(1, response.PageNumber);
         Assert.AreEqual(20, response.PageSize);
-        Assert.AreEqual(3, response.TotalCount);
+        Assert.AreEqual(3, response.TotalMatches);
         Assert.AreEqual(1, response.TotalPages);
         Assert.IsNull(typeof(DamageReportSummaryResponse).GetProperty("Media"));
     }
@@ -57,13 +61,26 @@ public class ReportsControllerTests
         using var db = TestDb.Create();
         var controller = CreateController(db);
 
-        var result = await controller.GetAll(cancellationToken: CancellationToken.None);
+        var result = await controller.GetAll(new PaginationRequest(), CancellationToken.None);
 
         var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-        var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
-        Assert.AreEqual(0, response.Items.Count);
-        Assert.AreEqual(0, response.TotalCount);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
+        Assert.AreEqual(0, response.Results.Count);
+        Assert.AreEqual(0, response.TotalMatches);
         Assert.AreEqual(0, response.TotalPages);
+    }
+
+    [TestMethod]
+    public async Task GetAllReturnsUnprocessableEntityWhenNoEarthquakeIsActive()
+    {
+        using var db = TestDb.Create();
+        db.Earthquakes.RemoveRange(db.Earthquakes);
+        await db.SaveChangesAsync();
+        var controller = CreateController(db);
+
+        var result = await controller.GetAll(new PaginationRequest(), CancellationToken.None);
+
+        TestAssert.InstanceOf<UnprocessableEntityObjectResult>(result);
     }
 
     [TestMethod]
@@ -79,22 +96,24 @@ public class ReportsControllerTests
         await db.SaveChangesAsync();
         var controller = CreateController(db);
 
-        var firstResult = await controller.GetAll(cancellationToken: CancellationToken.None);
-        var firstPage = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var firstResult = await controller.GetAll(new PaginationRequest(), CancellationToken.None);
+        var firstPage = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(firstResult).Value);
-        var secondResult = await controller.GetAll(page: 2, cancellationToken: CancellationToken.None);
-        var secondPage = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var secondResult = await controller.GetAll(
+            new PaginationRequest { Page = 2 },
+            CancellationToken.None);
+        var secondPage = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(secondResult).Value);
 
-        Assert.AreEqual(20, firstPage.Items.Count);
-        Assert.AreEqual(21, firstPage.TotalCount);
+        Assert.AreEqual(20, firstPage.Results.Count);
+        Assert.AreEqual(21, firstPage.TotalMatches);
         Assert.AreEqual(2, firstPage.TotalPages);
-        Assert.AreEqual(1, secondPage.Items.Count);
-        Assert.AreEqual(reports[0].Id, secondPage.Items[0].Id);
+        Assert.AreEqual(1, secondPage.Results.Count);
+        Assert.AreEqual(reports[0].Id, secondPage.Results.Single().Id);
     }
 
     [TestMethod]
-    public async Task GetAllFiltersBeforePaginatingAndReturnsTotalMetadata()
+    public async Task SearchFiltersBeforePaginatingAndReturnsTotalMetadata()
     {
         using var db = TestDb.Create();
         var earthquakeId = QuakeReport.Data.QuakeReportDbContext.ColombiaEarthquakeId;
@@ -105,24 +124,56 @@ public class ReportsControllerTests
         await db.SaveChangesAsync();
         var controller = CreateController(db);
 
-        var result = await controller.GetAll(
+        var result = await SearchAsync(
+            controller,
             page: 2,
             pageSize: 1,
-            severity: SeverityLevel.Major,
-            cancellationToken: CancellationToken.None);
+            severity: SeverityLevel.Major);
 
         var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-        var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
-        Assert.AreEqual(2, response.Page);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
+        Assert.AreEqual(2, response.PageNumber);
         Assert.AreEqual(1, response.PageSize);
-        Assert.AreEqual(2, response.TotalCount);
+        Assert.AreEqual(2, response.TotalMatches);
         Assert.AreEqual(2, response.TotalPages);
-        Assert.AreEqual(1, response.Items.Count);
-        Assert.AreEqual(oldestMajor.Id, response.Items[0].Id);
+        Assert.AreEqual(1, response.Results.Count);
+        Assert.AreEqual(oldestMajor.Id, response.Results.Single().Id);
     }
 
     [TestMethod]
-    public async Task GetAllSupportsEverySortOption()
+    public async Task SearchUsesAnExplicitEarthquakeInsteadOfTheActiveEarthquake()
+    {
+        using var db = TestDb.Create();
+        var selectedEarthquakeId = Guid.NewGuid();
+        var activeReport = CreateReport(
+            QuakeReport.Data.QuakeReportDbContext.ColombiaEarthquakeId,
+            SeverityLevel.Major,
+            DateTimeOffset.UtcNow);
+        var selectedReport = CreateReport(
+            selectedEarthquakeId,
+            SeverityLevel.Major,
+            DateTimeOffset.UtcNow);
+        db.DamageReports.AddRange(activeReport, selectedReport);
+        await db.SaveChangesAsync();
+        var controller = CreateController(db);
+        var request = new PagedRequest<DamageReportSearchFilter>
+        {
+            Filter = new DamageReportSearchFilter
+            {
+                EarthquakeId = selectedEarthquakeId,
+            },
+        };
+
+        var result = await controller.Search(request, CancellationToken.None);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
+            TestAssert.InstanceOf<OkObjectResult>(result).Value);
+
+        Assert.AreEqual(1, response.TotalMatches);
+        Assert.AreEqual(selectedReport.Id, response.Results.Single().Id);
+    }
+
+    [TestMethod]
+    public async Task SearchSupportsEverySortOption()
     {
         using var db = TestDb.Create();
         var earthquakeId = QuakeReport.Data.QuakeReportDbContext.ColombiaEarthquakeId;
@@ -143,15 +194,15 @@ public class ReportsControllerTests
 
         foreach (var (sort, expectedIds) in expectations)
         {
-            var result = await controller.GetAll(sort: sort, cancellationToken: CancellationToken.None);
+            var result = await SearchAsync(controller, sort: sort);
             var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-            var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
-            CollectionAssert.AreEqual(expectedIds, response.Items.Select(report => report.Id).ToArray(), sort.ToString());
+            var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
+            CollectionAssert.AreEqual(expectedIds, response.Results.Select(report => report.Id).ToArray(), sort.ToString());
         }
     }
 
     [TestMethod]
-    public async Task GetAllUsesReportIdAsDeterministicTieBreaker()
+    public async Task SearchUsesReportIdAsDeterministicTieBreaker()
     {
         using var db = TestDb.Create();
         var timestamp = new DateTimeOffset(2026, 8, 10, 12, 0, 0, TimeSpan.Zero);
@@ -163,15 +214,15 @@ public class ReportsControllerTests
         await db.SaveChangesAsync();
         var controller = CreateController(db);
 
-        var newestResult = await controller.GetAll(sort: ReportSortOption.Newest, cancellationToken: CancellationToken.None);
-        var newest = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var newestResult = await SearchAsync(controller, sort: ReportSortOption.Newest);
+        var newest = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(newestResult).Value);
-        var oldestResult = await controller.GetAll(sort: ReportSortOption.Oldest, cancellationToken: CancellationToken.None);
-        var oldest = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var oldestResult = await SearchAsync(controller, sort: ReportSortOption.Oldest);
+        var oldest = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(oldestResult).Value);
 
-        CollectionAssert.AreEqual(new[] { higherId.Id, lowerId.Id }, newest.Items.Select(report => report.Id).ToArray());
-        CollectionAssert.AreEqual(new[] { lowerId.Id, higherId.Id }, oldest.Items.Select(report => report.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { higherId.Id, lowerId.Id }, newest.Results.Select(report => report.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { lowerId.Id, higherId.Id }, oldest.Results.Select(report => report.Id).ToArray());
     }
 
     [TestMethod]
@@ -180,7 +231,7 @@ public class ReportsControllerTests
     [DataRow(1, 101, SeverityLevel.Minor, ReportSortOption.Newest)]
     [DataRow(1, 20, (SeverityLevel)999, ReportSortOption.Newest)]
     [DataRow(1, 20, SeverityLevel.Minor, (ReportSortOption)999)]
-    public async Task GetAllRejectsInvalidQueryValues(
+    public async Task SearchRejectsInvalidValues(
         int page,
         int pageSize,
         SeverityLevel severity,
@@ -189,7 +240,7 @@ public class ReportsControllerTests
         using var db = TestDb.Create();
         var controller = CreateController(db);
 
-        var result = await controller.GetAll(page, pageSize, severity, sort, CancellationToken.None);
+        var result = await SearchAsync(controller, page, pageSize, severity, sort);
 
         var badRequest = TestAssert.InstanceOf<BadRequestObjectResult>(result);
         Assert.AreEqual(StatusCodes.Status400BadRequest, badRequest.StatusCode);
@@ -433,7 +484,34 @@ public class ReportsControllerTests
     }
 
     private static ReportsController CreateController(QuakeReport.Data.QuakeReportDbContext db, RecordingMediaStorage? storage = null) =>
-        new(db, new ActiveEarthquakeService(db), storage ?? new RecordingMediaStorage());
+        new(
+            new DamageReportService(db, TestRepository.Create<DamageReport>(db)),
+            new ActiveEarthquakeService(db),
+            storage ?? new RecordingMediaStorage(),
+            new PaginationRequestValidator(),
+            new DamageReportSearchRequestValidator(new DamageReportSearchFilterValidator()));
+
+    private static Task<ActionResult<PagedResult<DamageReportSummaryResponse>>> SearchAsync(
+        ReportsController controller,
+        int page = 1,
+        int pageSize = 20,
+        SeverityLevel? severity = null,
+        ReportSortOption sort = ReportSortOption.Newest)
+    {
+        var request = new PagedRequest<DamageReportSearchFilter>
+        {
+            PageNumber = page,
+            PageSize = pageSize,
+            Filter = new DamageReportSearchFilter
+            {
+                EarthquakeId = null,
+                Severity = severity,
+                Sort = sort,
+            },
+        };
+
+        return controller.Search(request, CancellationToken.None);
+    }
 
     private static CreateDamageReportRequest CreateRequest(
         StructureType? structureType = null,

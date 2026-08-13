@@ -1,9 +1,10 @@
 using QuakeReport.Contracts.Enums;
+using StorageGenerics.Core.Contracts;
 
 namespace QuakeReport.Data.Models;
 
 /// <summary>A photo or video attached to a <see cref="DamageReport"/>.</summary>
-public class ReportMedia
+public class ReportMedia : IEntity<Guid>
 {
     public Guid Id { get; set; }
 

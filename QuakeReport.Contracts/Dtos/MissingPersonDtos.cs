@@ -86,6 +86,8 @@ public record CreateMissingPersonResponse(
     MissingPersonResponse Person,
     string ManagementCode);
 
+public record MissingPersonPhotoResponse(string PhotoUrl);
+
 public record CreateMissingPersonTipRequest(
     string Message,
     DateTimeOffset? SightedAt,

@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Web.Services;
 
 namespace QuakeReport.Tests;
@@ -10,7 +11,7 @@ namespace QuakeReport.Tests;
 public class QuakeReportApiClientTests
 {
     [TestMethod]
-    public async Task GetReportsSendsPagingFilterAndSortAndDeserializesResponse()
+    public async Task SearchReportsPostsPagingFilterAndSortAndDeserializesResponse()
     {
         var report = new DamageReportSummaryResponse(
             Guid.NewGuid(),
@@ -24,7 +25,7 @@ public class QuakeReportApiClientTests
             -74.3,
             "Main Street",
             DateTimeOffset.UtcNow);
-        var expected = new PagedResponse<DamageReportSummaryResponse>([report], 2, 10, 21, 3);
+        var expected = new { Results = new[] { report }, PageNumber = 2, PageSize = 10, TotalMatches = 21, TotalPages = 3 };
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = JsonContent.Create(expected),
@@ -34,49 +35,71 @@ public class QuakeReportApiClientTests
             BaseAddress = new Uri("https://api.test"),
         });
 
-        var result = await client.GetReportsAsync(
-            page: 2,
-            pageSize: 10,
-            severity: SeverityLevel.Major,
-            sort: ReportSortOption.HighestSeverity);
+        var earthquakeId = Guid.NewGuid();
+        var request = new PagedRequest<DamageReportSearchFilter>
+        {
+            PageNumber = 2,
+            PageSize = 10,
+            Filter = new DamageReportSearchFilter
+            {
+                EarthquakeId = earthquakeId,
+                Severity = SeverityLevel.Major,
+                Sort = ReportSortOption.HighestSeverity,
+            },
+        };
+        var result = await client.SearchReportsAsync(request);
 
-        Assert.AreEqual(
-            "/api/reports?page=2&pageSize=10&sort=HighestSeverity&severity=Major",
-            handler.RequestUri?.PathAndQuery);
-        Assert.AreEqual(2, result.Page);
+        Assert.AreEqual(HttpMethod.Post, handler.RequestMethod);
+        Assert.AreEqual("/api/reports/search", handler.RequestUri?.PathAndQuery);
+        StringAssert.Contains(handler.RequestBody, "\"pageNumber\":2");
+        StringAssert.Contains(handler.RequestBody, "\"pageSize\":10");
+        StringAssert.Contains(handler.RequestBody, earthquakeId.ToString());
+        StringAssert.Contains(handler.RequestBody, "\"severity\":3");
+        StringAssert.Contains(handler.RequestBody, "\"sort\":2");
+        Assert.AreEqual(2, result.PageNumber);
         Assert.AreEqual(10, result.PageSize);
-        Assert.AreEqual(21, result.TotalCount);
+        Assert.AreEqual(21, result.TotalMatches);
         Assert.AreEqual(3, result.TotalPages);
-        Assert.AreEqual(report.Id, result.Items.Single().Id);
+        Assert.AreEqual(report.Id, result.Results.Single().Id);
     }
 
     [TestMethod]
-    public async Task GetReportsOmitsSeverityWhenNoFilterIsSelected()
+    public async Task GetAllReportsSendsOnlyPaginationQueryParameters()
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new PagedResponse<DamageReportSummaryResponse>([], 1, 20, 0, 0)),
+            Content = JsonContent.Create(new { Results = Array.Empty<DamageReportSummaryResponse>(), PageNumber = 1, PageSize = 20, TotalMatches = 0, TotalPages = 0 }),
         });
         var client = new QuakeReportApiClient(new HttpClient(handler)
         {
             BaseAddress = new Uri("https://api.test"),
         });
 
-        await client.GetReportsAsync();
+        await client.GetAllReportsAsync();
 
-        Assert.AreEqual("/api/reports?page=1&pageSize=20&sort=Newest", handler.RequestUri?.PathAndQuery);
+        Assert.AreEqual(HttpMethod.Get, handler.RequestMethod);
+        Assert.AreEqual("/api/reports?page=1&pageSize=20", handler.RequestUri?.PathAndQuery);
     }
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
         public Uri? RequestUri { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(
+        public HttpMethod? RequestMethod { get; private set; }
+
+        public string? RequestBody { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             RequestUri = request.RequestUri;
-            return Task.FromResult(responseFactory(request));
+            RequestMethod = request.Method;
+            RequestBody = request.Content is null
+                ? null
+                : await request.Content.ReadAsStringAsync(cancellationToken);
+
+            return responseFactory(request);
         }
     }
 }

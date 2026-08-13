@@ -65,13 +65,20 @@ public class IngestionControllerTests
             new(IngestionPlatform.X, "https://x.com/example/status/2", null, null, null, 0.5m, null),
             new("Centro", null, "Calle 1", null, null, null, "Agua", "Recibir", null, null, null, null, null));
 
-        Assert.IsInstanceOfType(await controller.CollectionPoint(request, CancellationToken.None), typeof(UnauthorizedResult));
+        Assert.IsInstanceOfType(
+            TestAssert.Unwrap(await controller.CollectionPoint(request, CancellationToken.None)),
+            typeof(UnauthorizedResult));
         SetHeaders(controller, "ingestion-secret", null);
-        Assert.IsInstanceOfType(await controller.CollectionPoint(request, CancellationToken.None), typeof(BadRequestObjectResult));
+        Assert.IsInstanceOfType(
+            TestAssert.Unwrap(await controller.CollectionPoint(request, CancellationToken.None)),
+            typeof(BadRequestObjectResult));
     }
 
     private static IngestionController Controller(QuakeReport.Data.QuakeReportDbContext db, string key) =>
-        new(db, new ActiveEarthquakeService(db), new IngestionApiKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Ingestion:ApiKey"] = key }).Build()));
+        new(
+            new IngestionPersistenceService(db),
+            new ActiveEarthquakeService(db),
+            new IngestionApiKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Ingestion:ApiKey"] = key }).Build()));
 
     private static void SetHeaders(IngestionController controller, string key, string? idempotency)
     {

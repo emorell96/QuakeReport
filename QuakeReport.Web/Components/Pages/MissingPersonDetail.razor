@@ -50,13 +50,13 @@ else
 
     <MudPaper Class="pa-4 mt-4">
         <MudText Typo="Typo.h6">Informaciones recibidas</MudText>
-        @if (_tips.Items.Count == 0)
+        @if (_tips is null || _tips.Results.Count == 0)
         {
             <MudText>No hay informaciones públicas todavía.</MudText>
         }
         else
         {
-            @foreach (var tip in _tips.Items)
+            @foreach (var tip in _tips.Results)
             {
                 <MudPaper Class="pa-3 mt-2" Outlined="true">
                     <MudText>@tip.Message</MudText>
@@ -70,7 +70,7 @@ else
 
 @code {
     [Parameter] public Guid Id { get; set; }
-    private MissingPersonResponse? _person; private PagedResponse<MissingPersonTipResponse> _tips = new([], 1, 20, 0, 0); private bool _loading = true, _tipSent;
+    private MissingPersonResponse? _person; private PagedResult<MissingPersonTipResponse>? _tips; private bool _loading = true, _tipSent;
     private string? _message, _address, _responderName, _responderPhone, _responderEmail, _turnstileToken, _tipMessage;
     private DateTime? _sightedDate = DateTime.Today;
     private static string GetStatusLabel(MissingPersonStatus status) => status switch

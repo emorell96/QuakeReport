@@ -1,6 +1,8 @@
+using StorageGenerics.Core.Contracts;
+
 namespace QuakeReport.Data.Models;
 
-public class CollectionPointComment
+public class CollectionPointComment : IEntity<Guid>
 {
     public Guid Id { get; set; }
     public required Guid CollectionPointId { get; set; }

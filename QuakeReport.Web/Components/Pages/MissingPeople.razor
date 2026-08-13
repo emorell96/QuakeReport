@@ -92,12 +92,46 @@ else
     protected override async Task OnInitializedAsync() => await LoadAsync();
     private async Task LoadAsync()
     {
-        var cts = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _loadCancellation, cts);
-        previous?.Cancel(); previous?.Dispose(); _loading = true;
-        try { var response = await ApiClient.GetMissingPeopleAsync(_query, _status, _sort, _page, 20, cts.Token); if (ReferenceEquals(_loadCancellation, cts)) { _items = response.Items; _totalPages = response.TotalPages; } }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
-        finally { if (ReferenceEquals(_loadCancellation, cts)) _loading = false; }
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _loadCancellation, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        _loading = true;
+
+        try
+        {
+            var request = new PagedRequest<MissingPersonSearchFilter>
+            {
+                PageNumber = _page,
+                PageSize = 20,
+                Filter = new MissingPersonSearchFilter
+                {
+                    EarthquakeId = null,
+                    SearchText = _query,
+                    Status = _status,
+                    Sort = _sort,
+                },
+            };
+            var response = await ApiClient.SearchMissingPeopleAsync(
+                request,
+                cancellation.Token);
+
+            if (ReferenceEquals(_loadCancellation, cancellation))
+            {
+                _items = response.Results.ToList();
+                _totalPages = response.TotalPages;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_loadCancellation, cancellation))
+            {
+                _loading = false;
+            }
+        }
     }
     private async Task OnSearchAsync() { _page = 1; await LoadAsync(); }
     private async Task OnStatusChangedAsync(MissingPersonStatus value) { _status = value; _page = 1; await LoadAsync(); }

@@ -1,9 +1,10 @@
 using NetTopologySuite.Geometries;
 using QuakeReport.Contracts.Enums;
+using StorageGenerics.Core.Contracts;
 
 namespace QuakeReport.Data.Models;
 
-public class GeocodingReviewItem
+public class GeocodingReviewItem : IEntity<Guid>
 {
     public Guid Id { get; set; }
     public required string EntityType { get; set; }

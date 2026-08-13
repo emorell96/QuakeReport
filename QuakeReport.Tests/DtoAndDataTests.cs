@@ -143,7 +143,20 @@ public class DtoAndDataTests
     [TestMethod]
     public void BloodDonationCenterMapsSpanishSafePublicSummaryAndMapsUrl()
     {
-        var center = new BloodDonationCenter { Id = Guid.NewGuid(), EarthquakeId = Guid.NewGuid(), Name = "Banco de sangre", Address = "Calle 1", OperatingInstructions = "Confirma antes de ir", NeedsSummary = "Donaciones", PublicPhone = "3001234567", Location = GeoPoint.FromCoordinates(4.5, -74.3), BloodTypes = BloodTypeFlags.APositive | BloodTypeFlags.ONegative, Components = BloodComponentFlags.Plasma, CenterType = BloodDonationCenterType.PermanentSite };
+        var center = new BloodDonationCenter
+        {
+            Id = Guid.NewGuid(),
+            EarthquakeId = Guid.NewGuid(),
+            Name = "Banco de sangre",
+            Address = "Calle 1",
+            OperatingInstructions = "Confirma antes de ir",
+            NeedsSummary = "Donaciones",
+            PublicPhone = "3001234567",
+            Location = GeoPoint.FromCoordinates(4.5, -74.3),
+            BloodTypes = BloodTypeFlags.APositive | BloodTypeFlags.ONegative,
+            Components = BloodComponentFlags.Plasma,
+            CenterType = BloodDonationCenterType.PermanentSite
+        };
         var result = center.ToSummaryResponse();
         Assert.AreEqual(center.Id, result.Id);
         Assert.IsTrue(result.GoogleMapsUrl.Contains("4.5", StringComparison.Ordinal));

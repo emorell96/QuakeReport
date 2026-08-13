@@ -33,8 +33,14 @@ public sealed class HelpRequestFormValidator : MudFormValidator<HelpRequestForm>
 
     public HelpRequestFormValidator()
     {
-        this.AddTurnstileRules(); this.AddPrivacyConsentRules(); this.AddLocationRules(400);
-        this.AddOrganizationRules(); this.AddEmailRules(); this.AddPhoneRules(); this.AddWhatsAppRules(); this.RequirePhoneOrWhatsApp();
+        this.AddTurnstileRules();
+        this.AddPrivacyConsentRules();
+        this.AddLocationRules(400);
+        this.AddOrganizationRules();
+        this.AddEmailRules();
+        this.AddPhoneRules();
+        this.AddWhatsAppRules();
+        this.RequirePhoneOrWhatsApp();
         RuleFor(x => x.Title).NotEmpty().WithMessage("El título es obligatorio.").MaximumLength(200).WithMessage("El título no puede superar 200 caracteres.");
         RuleFor(x => x.RequesterName).NotEmpty().WithMessage("Indica quién solicita la ayuda.").MaximumLength(200).WithMessage("El solicitante no puede superar 200 caracteres.");
         RuleFor(x => x.NeedDetails).NotEmpty().WithMessage("Describe la ayuda necesaria.").MaximumLength(3000).WithMessage("La descripción de la necesidad no puede superar 3000 caracteres.");

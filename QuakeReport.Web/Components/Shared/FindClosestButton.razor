@@ -1,0 +1,75 @@
+@inject GeolocationService Geolocation
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<MudButton Variant="Variant.Outlined"
+           StartIcon="@Icons.Material.Filled.MyLocation"
+           Disabled="@_finding"
+           OnClick="FindClosestAsync">
+    @(_finding ? "Buscando..." : "Encontrar cerca de mí")
+</MudButton>
+
+@code {
+    private bool _finding;
+
+    [Parameter]
+    [EditorRequired]
+    public Func<GeoPointQuery, Task<string?>> FindAsync { get; set; } = default!;
+
+    private async Task FindClosestAsync()
+    {
+        _finding = true;
+
+        try
+        {
+            var location = await Geolocation.GetCurrentPositionAsync();
+            if (location is not GeolocationResult.Success position)
+            {
+                ShowLocationFailure((GeolocationResult.Failure)location);
+                return;
+            }
+
+            var destination = await FindAsync(new GeoPointQuery
+            {
+                Latitude = position.Latitude,
+                Longitude = position.Longitude,
+            });
+
+            if (destination is null)
+            {
+                Snackbar.Add(
+                    "No encontramos resultados con coordenadas disponibles.",
+                    Severity.Info);
+                return;
+            }
+
+            Navigation.NavigateTo(destination);
+        }
+        catch (Exception)
+        {
+            Snackbar.Add(
+                "No pudimos buscar el resultado más cercano. Inténtalo de nuevo.",
+                Severity.Error);
+        }
+        finally
+        {
+            _finding = false;
+        }
+    }
+
+    private void ShowLocationFailure(GeolocationResult.Failure failure)
+    {
+        var message = failure.Reason switch
+        {
+            GeolocationFailureReason.Denied =>
+                "Necesitamos permiso para acceder a tu ubicación.",
+            GeolocationFailureReason.Timeout =>
+                "No pudimos obtener tu ubicación a tiempo. Inténtalo de nuevo.",
+            GeolocationFailureReason.Unsupported =>
+                "Tu navegador no admite servicios de ubicación.",
+            _ => "Tu ubicación no está disponible en este momento.",
+        };
+
+        Snackbar.Add(message, Severity.Warning);
+    }
+}

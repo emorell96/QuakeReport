@@ -1,115 +1,112 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
+using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Reports;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
-using QuakeReport.Data;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
 [ApiController]
 [Route("api/reports")]
 public class ReportsController(
-    QuakeReportDbContext dbContext,
-    ActiveEarthquakeService activeEarthquakeService,
-    IMediaStorage mediaStorage) : ControllerBase
+    IDamageReportService reports,
+    IActiveEarthquakeService activeEarthquakeService,
+    IMediaStorage mediaStorage,
+    IValidator<PaginationRequest> paginationValidator,
+    IValidator<PagedRequest<DamageReportSearchFilter>> searchValidator) : ControllerBase
 {
     private const long MaxMediaSizeBytes = 50 * 1024 * 1024; // 50 MB
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
 
-    /// <summary>Returns a filtered, sorted page of report summaries.</summary>
+    /// <summary>Returns a page of report summaries for the active earthquake.</summary>
     [HttpGet]
-    [ProducesResponseType<PagedResponse<DamageReportSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<PagedResult<DamageReportSummaryResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> GetAll(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
-        [FromQuery] SeverityLevel? severity = null,
-        [FromQuery] ReportSortOption sort = ReportSortOption.Newest,
+    public async Task<ActionResult<PagedResult<DamageReportSummaryResponse>>> GetAll(
+        [FromQuery] PaginationRequest pagination,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1)
+        var validation = await paginationValidator.ValidateAsync(pagination, cancellationToken);
+        if (!validation.IsValid)
         {
-            ModelState.AddModelError(nameof(page), "Page must be at least 1.");
+            return BadRequest(validation.ToProblemDetails("Invalid pagination parameters."));
         }
 
-        if (pageSize is < 1 or > MaxPageSize)
+        var earthquakeId = await activeEarthquakeService.ResolveEarthquakeIdAsync(
+            null,
+            cancellationToken);
+        if (earthquakeId is null)
         {
-            ModelState.AddModelError(nameof(pageSize), $"Page size must be between 1 and {MaxPageSize}.");
+            return UnprocessableEntity("No active earthquake is configured.");
         }
 
-        if (severity.HasValue && !Enum.IsDefined(severity.Value))
+        var criteria = new DamageReportQueryCriteria(
+            earthquakeId.Value,
+            null,
+            ReportSortOption.Newest);
+        var orderedQuery = reports.GetOrderedQuery(criteria);
+        var projected = orderedQuery.SelectOrdered(report => report.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            pagination.Page,
+            pagination.PageSize,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("search")]
+    [ProducesResponseType<PagedResult<DamageReportSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
+    public async Task<ActionResult<PagedResult<DamageReportSummaryResponse>>> Search(
+        [FromBody] PagedRequest<DamageReportSearchFilter> request,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await searchValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
         {
-            ModelState.AddModelError(nameof(severity), "Severity is invalid.");
+            return BadRequest(validation.ToProblemDetails("Invalid damage-report search."));
         }
 
-        if (!Enum.IsDefined(sort))
+        var filter = request.Filter!;
+        var earthquakeId = await activeEarthquakeService.ResolveEarthquakeIdAsync(
+            filter.EarthquakeId,
+            cancellationToken);
+        if (earthquakeId is null)
         {
-            ModelState.AddModelError(nameof(sort), "Sort option is invalid.");
+            return UnprocessableEntity("No active earthquake is configured.");
         }
 
-        if (!ModelState.IsValid)
-        {
-            return BadRequest(new ValidationProblemDetails(ModelState)
-            {
-                Status = StatusCodes.Status400BadRequest,
-                Title = "One or more report query parameters are invalid.",
-            });
-        }
+        var criteria = new DamageReportQueryCriteria(
+            earthquakeId.Value,
+            filter.Severity,
+            filter.Sort);
+        var orderedQuery = reports.GetOrderedQuery(criteria);
+        var projected = orderedQuery.SelectOrdered(report => report.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
 
-        var query = dbContext.DamageReports.AsNoTracking();
-        if (severity.HasValue)
-        {
-            query = query.Where(report => report.Severity == severity.Value);
-        }
-
-        var totalCount = await query.CountAsync(cancellationToken);
-        var orderedQuery = sort switch
-        {
-            ReportSortOption.Oldest => query
-                .OrderBy(report => report.CreatedAt)
-                .ThenBy(report => report.Id),
-            ReportSortOption.HighestSeverity => query
-                .OrderByDescending(report => report.Severity)
-                .ThenByDescending(report => report.CreatedAt)
-                .ThenByDescending(report => report.Id),
-            ReportSortOption.LowestSeverity => query
-                .OrderBy(report => report.Severity)
-                .ThenByDescending(report => report.CreatedAt)
-                .ThenByDescending(report => report.Id),
-            _ => query
-                .OrderByDescending(report => report.CreatedAt)
-                .ThenByDescending(report => report.Id),
-        };
-
-        var reports = await orderedQuery
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
-
-        var response = new PagedResponse<DamageReportSummaryResponse>(
-            reports.Select(report => report.ToSummaryResponse()).ToList(),
-            page,
-            pageSize,
-            totalCount,
-            (int)Math.Ceiling(totalCount / (double)pageSize));
-
-        return Ok(response);
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
     [ProducesResponseType<DamageReportResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<DamageReportResponse>> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var report = await dbContext.DamageReports
-            .Include(r => r.Media)
-            .SingleOrDefaultAsync(r => r.Id == id, cancellationToken);
+        var report = await reports.GetAsync(id, cancellationToken);
 
         if (report is null)
         {
@@ -122,7 +119,7 @@ public class ReportsController(
     [HttpPost]
     [ProducesResponseType<DamageReportResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<IActionResult> Create(CreateDamageReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<DamageReportResponse>> Create(CreateDamageReportRequest request, CancellationToken cancellationToken)
     {
         if (!request.PrivacyConsent)
         {
@@ -148,8 +145,7 @@ public class ReportsController(
             Address = request.Address,
         };
 
-        dbContext.DamageReports.Add(report);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await reports.CreateAsync(report, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = report.Id }, report.ToResponse());
     }
@@ -159,9 +155,9 @@ public class ReportsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [RequestSizeLimit(MaxMediaSizeBytes)]
-    public async Task<IActionResult> UploadMedia(Guid id, [FromForm] UploadReportMediaRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<ReportMediaResponse>> UploadMedia(Guid id, [FromForm] UploadReportMediaRequest request, CancellationToken cancellationToken)
     {
-        var reportExists = await dbContext.DamageReports.AnyAsync(r => r.Id == id, cancellationToken);
+        var reportExists = await reports.ExistsAsync(id, cancellationToken);
         if (!reportExists)
         {
             return NotFound();
@@ -203,8 +199,7 @@ public class ReportsController(
                 id, media.Id, file.FileName, file.ContentType, stream, cancellationToken);
         }
 
-        dbContext.ReportMedia.Add(media);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await reports.AttachMediaAsync(media, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id }, media.ToResponse());
     }

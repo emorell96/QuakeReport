@@ -1,6 +1,8 @@
+using StorageGenerics.Core.Contracts;
+
 namespace QuakeReport.Data.Models;
 
-public class ShelterAbuseReport
+public class ShelterAbuseReport : IEntity<Guid>
 {
     public Guid Id { get; set; }
     public required Guid ShelterId { get; set; }

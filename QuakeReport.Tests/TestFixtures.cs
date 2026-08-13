@@ -1,8 +1,12 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using QuakeReport.ApiService.Media;
 using QuakeReport.Data;
+using QuakeReport.Data.Models;
+using StorageGenerics.Core.Contracts;
+using System.Reflection;
 
 namespace QuakeReport.Tests;
 
@@ -20,12 +24,56 @@ internal static class TestDb
     }
 }
 
+internal static class TestRepository
+{
+    public static IQueryableRepositoryService<TEntity, Guid> Create<TEntity>(QuakeReportDbContext db)
+        where TEntity : class, IEntity<Guid>
+    {
+        var repository = DispatchProxy.Create<IQueryableRepositoryService<TEntity, Guid>, QueryRepositoryProxy<TEntity>>();
+        ((QueryRepositoryProxy<TEntity>)(object)repository).Db = db;
+        return repository;
+    }
+
+    private class QueryRepositoryProxy<TEntity> : DispatchProxy
+        where TEntity : class, IEntity<Guid>
+    {
+        public required QuakeReportDbContext Db { get; set; }
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.Name switch
+            {
+                "QueryAll" => Db.Set<TEntity>().AsQueryable(),
+                "SaveChangesAsync" => Db.SaveChangesAsync(args is [CancellationToken token] ? token : default),
+                "Dispose" => null,
+                _ => throw new NotSupportedException($"{targetMethod?.Name} is not used by these controller tests."),
+            };
+    }
+}
+
 internal static class TestAssert
 {
     public static T InstanceOf<T>(object? value) where T : class
     {
+        value = Unwrap(value);
         Assert.IsInstanceOfType(value, typeof(T));
         return (T)value!;
+    }
+
+    public static object? Unwrap(object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        var type = value.GetType();
+        if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(ActionResult<>))
+        {
+            return value;
+        }
+
+        var result = type.GetProperty(nameof(ActionResult<object>.Result))?.GetValue(value);
+        return result ?? type.GetProperty(nameof(ActionResult<object>.Value))?.GetValue(value);
     }
 }
 

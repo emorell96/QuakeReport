@@ -45,7 +45,8 @@ public sealed class MissingPersonFormValidator : MudFormValidator<MissingPersonF
 
     public MissingPersonFormValidator()
     {
-        this.AddTurnstileRules(); this.AddPrivacyConsentRules();
+        this.AddTurnstileRules();
+        this.AddPrivacyConsentRules();
         RuleFor(x => x.FullName).NotEmpty().WithMessage("El nombre completo es obligatorio.").MaximumLength(200).WithMessage("El nombre no puede superar 200 caracteres.");
         RuleFor(x => x.Aliases).MaximumLength(500).WithMessage("Los alias no pueden superar 500 caracteres.");
         RuleFor(x => x.ApproximateAge).MaximumLength(50).WithMessage("La edad aproximada no puede superar 50 caracteres.");

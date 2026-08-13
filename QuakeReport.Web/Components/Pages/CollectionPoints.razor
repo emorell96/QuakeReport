@@ -25,6 +25,7 @@
             <MudSelectItem Value="CollectionPointSortOption.Name">Nombre</MudSelectItem>
         </MudSelect>
         <MudButton OnClick="SearchAsync">Buscar</MudButton>
+        <FindClosestButton FindAsync="FindClosestAsync" />
     </MudStack>
 </MudPaper>
 @if (_items.Count == 0) { <MudAlert Severity="Severity.Info">No hay centros de acopio para mostrar.</MudAlert> }
@@ -59,15 +60,110 @@ else
 }
 @code {
     private IReadOnlyList<CollectionPointSummaryResponse> _items = [];
-    private string? _query; private CollectionPointOperationalStatus? _status; private CollectionPointModerationStatus? _moderationStatus; private CollectionPointSortOption _sort = CollectionPointSortOption.Newest; private int _page = 1, _totalPages; private CancellationTokenSource? _cts;
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task SearchAsync() { _page = 1; await LoadAsync(); }
-    private async Task PageChangedAsync(int page) { _page = page; await LoadAsync(); }
+    private string? _query;
+    private CollectionPointOperationalStatus? _status;
+    private CollectionPointModerationStatus? _moderationStatus;
+    private CollectionPointSortOption _sort = CollectionPointSortOption.Newest;
+    private int _page = 1;
+    private int _totalPages;
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PageChangedAsync(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
-        var cts = new CancellationTokenSource(); var previous = Interlocked.Exchange(ref _cts, cts); previous?.Cancel(); previous?.Dispose();
-        try { var response = await ApiClient.GetCollectionPointsAsync(_query, _status, _moderationStatus, _sort, _page, 20, cts.Token); if (ReferenceEquals(_cts, cts)) { _items = response.Items; _totalPages = response.TotalPages; } }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _cts, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+
+        try
+        {
+            PagedResult<CollectionPointSummaryResponse> response;
+            if (string.IsNullOrWhiteSpace(_query) &&
+                _status is null &&
+                _moderationStatus is null &&
+                _sort == CollectionPointSortOption.Newest)
+            {
+                response = await ApiClient.GetAllCollectionPointsAsync(
+                    _page,
+                    20,
+                    cancellation.Token);
+            }
+            else
+            {
+                var request = new PagedRequest<CollectionPointSearchFilter>
+                {
+                    PageNumber = _page,
+                    PageSize = 20,
+                    Filter = new CollectionPointSearchFilter
+                    {
+                        EarthquakeId = null,
+                        SearchText = _query,
+                        OperationalStatus = _status,
+                        ModerationStatus = _moderationStatus,
+                        Sort = _sort,
+                    },
+                };
+                response = await ApiClient.SearchCollectionPointsAsync(
+                    request,
+                    cancellation.Token);
+            }
+
+            if (ReferenceEquals(_cts, cancellation))
+            {
+                _items = response.Results.ToList();
+                _totalPages = response.TotalPages;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
     }
-    private static string GetStatus(CollectionPointOperationalStatus status) => status switch { CollectionPointOperationalStatus.Open => "Abierto", CollectionPointOperationalStatus.Full => "Capacidad llena", CollectionPointOperationalStatus.Closed => "Cerrado", _ => status.ToString() };
+
+    private static string GetStatus(CollectionPointOperationalStatus status) =>
+        status switch
+        {
+            CollectionPointOperationalStatus.Open => "Abierto",
+            CollectionPointOperationalStatus.Full => "Capacidad llena",
+            CollectionPointOperationalStatus.Closed => "Cerrado",
+            _ => status.ToString(),
+        };
+
+    private async Task<string?> FindClosestAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<CollectionPointSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new CollectionPointSearchFilter
+            {
+                EarthquakeId = null,
+                SearchText = _query,
+                OperationalStatus = _status,
+                ModerationStatus = _moderationStatus,
+                Sort = _sort,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchCollectionPointsAsync(request);
+        return result.Results.FirstOrDefault() is { } point
+            ? $"/collection-points/{point.Id}"
+            : null;
+    }
 }
