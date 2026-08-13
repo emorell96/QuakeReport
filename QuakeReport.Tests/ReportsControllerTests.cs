@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Controllers;
+using QuakeReport.ApiService.Reports;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.Contracts.Dtos;
@@ -434,7 +435,10 @@ public class ReportsControllerTests
     }
 
     private static ReportsController CreateController(QuakeReport.Data.QuakeReportDbContext db, RecordingMediaStorage? storage = null) =>
-        new(db, new ActiveEarthquakeService(db), storage ?? new RecordingMediaStorage(), TestRepository.Create<DamageReport>(db));
+        new(
+            new DamageReportService(db, TestRepository.Create<DamageReport>(db)),
+            new ActiveEarthquakeService(db),
+            storage ?? new RecordingMediaStorage());
 
     private static CreateDamageReportRequest CreateRequest(
         StructureType? structureType = null,

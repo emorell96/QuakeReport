@@ -71,7 +71,10 @@ public class IngestionControllerTests
     }
 
     private static IngestionController Controller(QuakeReport.Data.QuakeReportDbContext db, string key) =>
-        new(db, new ActiveEarthquakeService(db), new IngestionApiKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Ingestion:ApiKey"] = key }).Build()));
+        new(
+            new IngestionPersistenceService(db),
+            new ActiveEarthquakeService(db),
+            new IngestionApiKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Ingestion:ApiKey"] = key }).Build()));
 
     private static void SetHeaders(IngestionController controller, string key, string? idempotency)
     {

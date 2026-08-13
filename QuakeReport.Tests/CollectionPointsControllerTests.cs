@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using QuakeReport.ApiService.Controllers;
+using QuakeReport.ApiService.CollectionPoints;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Security;
@@ -111,13 +112,48 @@ public class CollectionPointsControllerTests
         Assert.AreEqual("Cerca", page.Results.Single().Name);
     }
 
+    [TestMethod]
+    public async Task GetReturnsOnlyTwentyLatestVisibleComments()
+    {
+        await using var db = TestDb.Create();
+        var point = Point(
+            QuakeReportDbContext.ColombiaEarthquakeId,
+            "Centro",
+            CollectionPointModerationStatus.Approved,
+            CollectionPointOperationalStatus.Open);
+        db.CollectionPoints.Add(point);
+
+        var comments = Enumerable.Range(1, 22)
+            .Select(index => new CollectionPointComment
+            {
+                Id = Guid.NewGuid(),
+                CollectionPointId = point.Id,
+                Message = $"Comment {index}",
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(index)
+            })
+            .ToList();
+        comments[^1].IsHidden = true;
+        db.CollectionPointComments.AddRange(comments);
+        await db.SaveChangesAsync();
+
+        var result = await Controller(db).Get(point.Id, CancellationToken.None);
+        var response = TestAssert.InstanceOf<CollectionPointResponse>(
+            TestAssert.InstanceOf<OkObjectResult>(result).Value);
+
+        Assert.AreEqual(20, response.Comments.Count);
+        Assert.IsFalse(response.Comments.Any(comment => comment.Message == "Comment 22"));
+        Assert.AreEqual("Comment 21", response.Comments[0].Message);
+        Assert.AreEqual("Comment 2", response.Comments[^1].Message);
+    }
+
     private static CollectionPointsController Controller(QuakeReportDbContext db) => new(
-        db,
+        new CollectionPointService(
+            db,
+            TestRepository.Create<CollectionPoint>(db),
+            TestRepository.Create<CollectionPointComment>(db)),
         new ActiveEarthquakeService(db),
         new AlwaysTurnstile(),
-        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()),
-        TestRepository.Create<CollectionPoint>(db),
-        TestRepository.Create<CollectionPointComment>(db));
+        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()));
 
     private static CreateCollectionPointRequest Request(string name) => new(name, null, "Calle 1, Cali", null, null, null, "Agua y alimentos", "Recibir de 8 a 5", null, null, null, null, null, true, "ok");
 

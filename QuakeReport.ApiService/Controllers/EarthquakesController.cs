@@ -7,7 +7,7 @@ namespace QuakeReport.ApiService.Controllers;
 
 [ApiController]
 [Route("api/earthquakes")]
-public class EarthquakesController(ActiveEarthquakeService activeEarthquakeService) : ControllerBase
+public class EarthquakesController(IActiveEarthquakeService activeEarthquakeService) : ControllerBase
 {
     [HttpGet("active")]
     [ProducesResponseType<EarthquakeResponse>(StatusCodes.Status200OK)]

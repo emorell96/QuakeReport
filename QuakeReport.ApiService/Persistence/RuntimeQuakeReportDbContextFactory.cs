@@ -1,16 +1,17 @@
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using QuakeReport.Data;
 
 namespace QuakeReport.ApiService.Persistence;
 
-public sealed class RuntimeQuakeReportDbContextFactory(NpgsqlDataSource dataSource)
+public sealed class RuntimeQuakeReportDbContextFactory(IConfiguration configuration)
     : IDbContextFactory<QuakeReportDbContext>
 {
     public QuakeReportDbContext CreateDbContext()
     {
+        var connectionString = configuration.GetConnectionString("quakereportdb") ??
+            throw new InvalidOperationException("The quakereportdb connection string is not configured.");
         var options = new DbContextOptionsBuilder<QuakeReportDbContext>()
-            .UseNpgsql(dataSource, npgsql => npgsql.UseNetTopologySuite())
+            .UseNpgsql(connectionString, npgsql => npgsql.UseNetTopologySuite())
             .Options;
         return new QuakeReportDbContext(options);
     }

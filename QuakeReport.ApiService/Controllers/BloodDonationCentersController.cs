@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using QuakeReport.ApiService.BloodDonationCenters;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
@@ -8,10 +8,8 @@ using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
-using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
-using StorageGenerics.Core.Contracts;
 using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
@@ -19,12 +17,10 @@ namespace QuakeReport.ApiService.Controllers;
 
 [ApiController, Route("api/blood-donation-centers")]
 public class BloodDonationCentersController(
-    QuakeReportDbContext db,
-    ActiveEarthquakeService earthquakes,
+    IBloodDonationCenterService centers,
+    IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey,
-    IQueryableRepositoryService<BloodDonationCenter, Guid> centersRepository,
-    IQueryableRepositoryService<BloodDonationCenterComment, Guid> commentsRepository) : ControllerBase
+    IModerationKeyValidator moderationKey) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(
@@ -46,57 +42,29 @@ public class BloodDonationCentersController(
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             !ValidBloodTypes(bloodTypes) || !ValidComponents(components))
+        {
             return BadRequest("Parámetros inválidos.");
+        }
 
         if ((latitude.HasValue != longitude.HasValue) ||
             (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
+        {
             return BadRequest("Coordenadas inválidas.");
+        }
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        Guid? earthquakeId = earthquake?.Id;
-        var centers = centersRepository.QueryAll().AsNoTracking()
-            .Where(x => x.EarthquakeId == earthquakeId && x.ModerationStatus != BloodDonationModerationStatus.Rejected);
-
-        if (moderationStatus is not null)
-            centers = centers.Where(x => x.ModerationStatus == moderationStatus);
-
-        if (centerType is not null)
-            centers = centers.Where(x => x.CenterType == centerType);
-
-        if (operationalStatus is not null)
-            centers = centers.Where(x => x.OperationalStatus == operationalStatus);
-        else
-            centers = centers.Where(x => x.OperationalStatus != BloodDonationOperationalStatus.Closed &&
-                (x.EndsAt == null || x.EndsAt > DateTimeOffset.UtcNow));
-
-        if (bloodTypes is not null)
-            centers = centers.Where(x => (x.BloodTypes & bloodTypes.Value) != 0);
-
-        if (components is not null)
-            centers = centers.Where(x => (x.Components & components.Value) != 0);
-
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            var normalized = SearchTextNormalizer.Normalize(query);
-            centers = centers.Where(x => x.SearchText!.Contains(normalized));
-        }
-
-        if (latitude.HasValue)
-        {
-            var candidates = centers.Where(x => x.Location != null);
-            var nearest = candidates
-                .OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
-                .ThenBy(x => x.Id);
-            var nearestProjected = nearest.SelectOrdered(x => x.ToSummaryResponse());
-            return Ok(await nearestProjected.ToPagedResultAsync(page, pageSize, cancellationToken));
-        }
-
-        var ordered = sort switch
-        {
-            BloodDonationSortOption.RecentlyUpdated => centers.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id),
-            BloodDonationSortOption.Name => centers.OrderBy(x => x.Name).ThenBy(x => x.Id),
-            _ => centers.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
-        };
+        var criteria = new BloodDonationCenterQueryCriteria(
+            earthquake?.Id,
+            query,
+            centerType,
+            operationalStatus,
+            moderationStatus,
+            bloodTypes,
+            components,
+            sort,
+            latitude,
+            longitude);
+        var ordered = centers.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(x => x.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -104,15 +72,13 @@ public class BloodDonationCentersController(
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
     {
-        var center = await db.BloodDonationCenters.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.Id == id && x.ModerationStatus != BloodDonationModerationStatus.Rejected, cancellationToken);
-        if (center is null) return NotFound();
+        var center = await centers.GetPublicAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
 
-        var comments = await db.BloodDonationCenterComments.AsNoTracking()
-            .Where(x => x.BloodDonationCenterId == id && !x.IsHidden)
-            .OrderByDescending(x => x.CreatedAt)
-            .Take(20)
-            .ToListAsync(cancellationToken);
+        var comments = await centers.GetRecentPublicCommentsAsync(id, 20, cancellationToken);
 
         return Ok(center.ToResponse(comments.Select(x => x.ToResponse()).ToList()));
     }
@@ -124,15 +90,16 @@ public class BloodDonationCentersController(
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Paginación inválida.");
-        if (!await db.BloodDonationCenters.AnyAsync(x => x.Id == id && x.ModerationStatus != BloodDonationModerationStatus.Rejected, cancellationToken))
+        if (!PaginationParameters.IsValid(page, pageSize))
+        {
+            return BadRequest("Paginación inválida.");
+        }
+        if (!await centers.PublicExistsAsync(id, cancellationToken))
+        {
             return NotFound();
+        }
 
-        var comments = commentsRepository.QueryAll().AsNoTracking()
-            .Where(x => x.BloodDonationCenterId == id && !x.IsHidden);
-        var ordered = comments
-            .OrderByDescending(x => x.CreatedAt)
-            .ThenByDescending(x => x.Id);
+        var ordered = centers.GetPublicCommentsQuery(id);
         var projected = ordered.SelectOrdered(x => x.ToResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -141,19 +108,30 @@ public class BloodDonationCentersController(
     public async Task<IActionResult> Create(CreateBloodDonationCenterRequest request, CancellationToken cancellationToken)
     {
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "El servicio de verificación no está disponible.");
-        if (!challenge.Success) return BadRequest("La verificación humana falló.");
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "El servicio de verificación no está disponible.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("La verificación humana falló.");
+        }
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return UnprocessableEntity("No hay un terremoto activo configurado.");
+        if (earthquake is null)
+        {
+            return UnprocessableEntity("No hay un terremoto activo configurado.");
+        }
 
         var code = MissingPersonSecurity.CreateManagementCode();
         var center = CreateEntity(request, earthquake.Id, BloodDonationSource.Community, BloodDonationModerationStatus.Pending, code);
-        db.BloodDonationCenters.Add(center);
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.CreateAsync(center, cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { id = center.Id }, new CreateBloodDonationCenterResponse(center.ToResponse(), code));
     }
@@ -161,11 +139,13 @@ public class BloodDonationCentersController(
     [HttpPost("management/lookup")]
     public async Task<IActionResult> Lookup(BloodDonationCenterManagementCodeRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ManagementCode)) return BadRequest("El código es obligatorio.");
+        if (string.IsNullOrWhiteSpace(request.ManagementCode))
+        {
+            return BadRequest("El código es obligatorio.");
+        }
 
         var hash = MissingPersonSecurity.HashManagementCode(request.ManagementCode);
-        var center = await db.BloodDonationCenters.AsNoTracking()
-            .SingleOrDefaultAsync(x => x.ManagementCodeHash == hash && x.ModerationStatus != BloodDonationModerationStatus.Rejected, cancellationToken);
+        var center = await centers.GetByManagementCodeHashAsync(hash, cancellationToken);
 
         return center is null ? NotFound() : Ok(center.ToResponse());
     }
@@ -177,15 +157,24 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Management-Code")] string? code,
         CancellationToken cancellationToken)
     {
-        var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (center is null) return NotFound();
-        if (!Authorize(code, center)) return Unauthorized();
+        var center = await centers.GetForUpdateAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
+        if (!Authorize(code, center))
+        {
+            return Unauthorized();
+        }
 
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
         Apply(center, request);
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.PersistUpdateAsync(center, cancellationToken);
         return Ok(center.ToResponse());
     }
 
@@ -196,14 +185,23 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Management-Code")] string? code,
         CancellationToken cancellationToken)
     {
-        var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (center is null) return NotFound();
-        if (!Authorize(code, center)) return Unauthorized();
-        if (!Enum.IsDefined(request.Status)) return BadRequest("Estado inválido.");
+        var center = await centers.GetForUpdateAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
+        if (!Authorize(code, center))
+        {
+            return Unauthorized();
+        }
+        if (!Enum.IsDefined(request.Status))
+        {
+            return BadRequest("Estado inválido.");
+        }
 
         center.OperationalStatus = request.Status;
         center.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.PersistUpdateAsync(center, cancellationToken);
         return Ok(center.ToResponse());
     }
 
@@ -211,14 +209,24 @@ public class BloodDonationCentersController(
     public async Task<IActionResult> Comment(Guid id, CreateBloodDonationCenterCommentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
+        {
             return BadRequest("El comentario es obligatorio.");
+        }
 
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503);
-        if (!challenge.Success) return BadRequest("La verificación humana falló.");
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503);
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("La verificación humana falló.");
+        }
 
-        if (!await db.BloodDonationCenters.AnyAsync(x => x.Id == id && x.ModerationStatus != BloodDonationModerationStatus.Rejected, cancellationToken))
+        if (!await centers.PublicExistsAsync(id, cancellationToken))
+        {
             return NotFound();
+        }
 
         var comment = new BloodDonationCenterComment
         {
@@ -227,8 +235,7 @@ public class BloodDonationCentersController(
             DisplayName = request.DisplayName?.Trim(),
             Message = request.Message.Trim()
         };
-        db.BloodDonationCenterComments.Add(comment);
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.CreateCommentAsync(comment, cancellationToken);
 
         return Created($"/api/blood-donation-centers/{id}/comments/{comment.Id}", comment.ToResponse());
     }
@@ -240,38 +247,54 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Management-Code")] string? code,
         CancellationToken cancellationToken)
     {
-        var center = await db.BloodDonationCenters.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (center is null) return NotFound();
-        if (!Authorize(code, center)) return Unauthorized();
+        var center = await centers.GetForUpdateAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
+        if (!Authorize(code, center))
+        {
+            return Unauthorized();
+        }
 
-        var comment = await db.BloodDonationCenterComments
-            .SingleOrDefaultAsync(x => x.Id == commentId && x.BloodDonationCenterId == id, cancellationToken);
-        if (comment is null) return NotFound();
-
-        comment.IsHidden = true;
-        await db.SaveChangesAsync(cancellationToken);
+        if (!await centers.HideCommentAsync(id, commentId, cancellationToken))
+        {
+            return NotFound();
+        }
         return NoContent();
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
     public async Task<IActionResult> Abuse(Guid id, BloodDonationCenterAbuseReportRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason)) return BadRequest("El motivo es obligatorio.");
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return BadRequest("El motivo es obligatorio.");
+        }
 
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503);
-        if (!challenge.Success) return BadRequest("La verificación humana falló.");
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503);
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("La verificación humana falló.");
+        }
 
-        if (!await db.BloodDonationCenters.AnyAsync(x => x.Id == id, cancellationToken)) return NotFound();
+        if (!await centers.ExistsAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
 
-        db.BloodDonationCenterAbuseReports.Add(new BloodDonationCenterAbuseReport
+        var report = new BloodDonationCenterAbuseReport
         {
             Id = Guid.NewGuid(),
             BloodDonationCenterId = id,
             Reason = request.Reason.Trim(),
             Details = request.Details?.Trim()
-        });
-        await db.SaveChangesAsync(cancellationToken);
+        };
+        await centers.CreateAbuseReportAsync(report, cancellationToken);
         return Accepted();
     }
 
@@ -282,14 +305,17 @@ public class BloodDonationCentersController(
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
-        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Paginación inválida.");
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
+        if (!PaginationParameters.IsValid(page, pageSize))
+        {
+            return BadRequest("Paginación inválida.");
+        }
 
-        var centers = centersRepository.QueryAll().AsNoTracking()
-            .Where(x => x.ModerationStatus == BloodDonationModerationStatus.Pending)
-            .OrderBy(x => x.CreatedAt)
-            .ThenBy(x => x.Id);
-        var projected = centers.SelectOrdered(x => x.ToSummaryResponse());
+        var pendingCenters = centers.GetPendingQuery();
+        var projected = pendingCenters.SelectOrdered(x => x.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
@@ -300,19 +326,27 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return UnprocessableEntity();
+        if (earthquake is null)
+        {
+            return UnprocessableEntity();
+        }
 
         var center = CreateEntity(request, earthquake.Id, BloodDonationSource.Official, BloodDonationModerationStatus.Approved, null);
         center.ModeratedAt = DateTimeOffset.UtcNow;
         center.ModeratedBy = moderator?.Trim();
-        db.BloodDonationCenters.Add(center);
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.CreateAsync(center, cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { id = center.Id }, center.ToResponse());
     }
@@ -325,17 +359,26 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
-        if (!Enum.IsDefined(request.Status)) return BadRequest();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
+        if (!Enum.IsDefined(request.Status))
+        {
+            return BadRequest();
+        }
 
-        var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (center is null) return NotFound();
+        var center = await centers.GetForUpdateAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
 
         center.ModerationStatus = request.Status;
         center.ModeratedAt = DateTimeOffset.UtcNow;
         center.ModeratedBy = moderator?.Trim();
         center.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.PersistUpdateAsync(center, cancellationToken);
         return Ok(center.ToResponse());
     }
 
@@ -346,16 +389,25 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
-        var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (center is null) return NotFound();
+        var center = await centers.GetForUpdateAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
 
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
         Apply(center, request);
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.PersistUpdateAsync(center, cancellationToken);
         return Ok(center.ToResponse());
     }
 
@@ -366,15 +418,24 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
-        var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (center is null) return NotFound();
-        if (!Enum.IsDefined(request.Status)) return BadRequest();
+        var center = await centers.GetForUpdateAsync(id, cancellationToken);
+        if (center is null)
+        {
+            return NotFound();
+        }
+        if (!Enum.IsDefined(request.Status))
+        {
+            return BadRequest();
+        }
 
         center.OperationalStatus = request.Status;
         center.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await centers.PersistUpdateAsync(center, cancellationToken);
         return Ok(center.ToResponse());
     }
 
@@ -385,14 +446,16 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
-        var comment = await db.BloodDonationCenterComments
-            .SingleOrDefaultAsync(x => x.Id == commentId && x.BloodDonationCenterId == id, cancellationToken);
-        if (comment is null) return NotFound();
+        if (!await centers.HideCommentAsync(id, commentId, cancellationToken))
+        {
+            return NotFound();
+        }
 
-        comment.IsHidden = true;
-        await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
@@ -477,12 +540,30 @@ public class BloodDonationCentersController(
         DateTimeOffset? starts,
         DateTimeOffset? ends)
     {
-        if (string.IsNullOrWhiteSpace(name) || name.Length > 200) return "El nombre es obligatorio.";
-        if (string.IsNullOrWhiteSpace(address) || address.Length > 400) return "La dirección es obligatoria.";
-        if (string.IsNullOrWhiteSpace(instructions) || instructions.Length > 2500) return "Las instrucciones son obligatorias.";
-        if (!Enum.IsDefined(type) || !ValidBloodTypes(types) || !ValidComponents(components)) return "Selecciona tipos de sangre y componentes válidos.";
-        if (type == BloodDonationCenterType.TemporaryCampaign && (starts is null || ends is null)) return "Las campañas requieren fecha de inicio y fin.";
-        if (starts is not null && ends is not null && ends < starts) return "La fecha final no puede ser anterior a la inicial.";
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
+        {
+            return "El nombre es obligatorio.";
+        }
+        if (string.IsNullOrWhiteSpace(address) || address.Length > 400)
+        {
+            return "La dirección es obligatoria.";
+        }
+        if (string.IsNullOrWhiteSpace(instructions) || instructions.Length > 2500)
+        {
+            return "Las instrucciones son obligatorias.";
+        }
+        if (!Enum.IsDefined(type) || !ValidBloodTypes(types) || !ValidComponents(components))
+        {
+            return "Selecciona tipos de sangre y componentes válidos.";
+        }
+        if (type == BloodDonationCenterType.TemporaryCampaign && (starts is null || ends is null))
+        {
+            return "Las campañas requieren fecha de inicio y fin.";
+        }
+        if (starts is not null && ends is not null && ends < starts)
+        {
+            return "La fecha final no puede ser anterior a la inicial.";
+        }
         return null;
     }
 

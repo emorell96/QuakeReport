@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using QuakeReport.ApiService.Controllers;
+using QuakeReport.ApiService.Shelters;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Security;
@@ -95,9 +96,10 @@ public class SheltersControllerTests
     }
 
     private static SheltersController Controller(QuakeReportDbContext db) => new(
-        db, new ActiveEarthquakeService(db), new AlwaysTurnstile(),
-        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()),
-        TestRepository.Create<Shelter>(db));
+        new ShelterService(db, TestRepository.Create<Shelter>(db)),
+        new ActiveEarthquakeService(db),
+        new AlwaysTurnstile(),
+        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()));
 
     private static CreateShelterRequest CreateRequest(string name) =>
         new(name, null, "Calle 1", 3.45, -76.53, "Descripción", "Abierto todo el día", null, null, null, null, true, "token");

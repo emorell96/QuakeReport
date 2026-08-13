@@ -1,17 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
+using QuakeReport.ApiService.HelpRequests;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Pagination;
 using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
-using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
-using StorageGenerics.Core.Contracts;
 using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
@@ -19,12 +17,10 @@ namespace QuakeReport.ApiService.Controllers;
 [ApiController]
 [Route("api/help-requests")]
 public class HelpRequestsController(
-    QuakeReportDbContext db,
-    ActiveEarthquakeService earthquakes,
+    IHelpRequestService helpRequests,
+    IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey,
-    IQueryableRepositoryService<HelpRequest, Guid> requestsRepository,
-    IQueryableRepositoryService<HelpRequestComment, Guid> commentsRepository) : ControllerBase
+    IModerationKeyValidator moderationKey) : ControllerBase
 {
     private const HelpNeedCategory AllCategories = HelpNeedCategory.Personnel | HelpNeedCategory.Medical |
         HelpNeedCategory.RescueEquipment | HelpNeedCategory.Machinery | HelpNeedCategory.Transportation |
@@ -43,34 +39,20 @@ public class HelpRequestsController(
             (status is not null && !Enum.IsDefined(status.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             (category is not null && !ValidCategories(category.Value)))
-            return BadRequest("Invalid help-request query parameters.");
-
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        Guid? earthquakeId = earthquake?.Id;
-        var requests = requestsRepository.QueryAll().AsNoTracking().Where(request =>
-            request.EarthquakeId == earthquakeId && request.ModerationStatus != HelpRequestModerationStatus.Rejected);
-        if (status is null) requests = requests.Where(request => request.Status != HelpRequestStatus.Resolved);
-        else requests = requests.Where(request => request.Status == status);
-        if (priority is not null) requests = requests.Where(request => request.Priority == priority);
-        if (category is not null) requests = requests.Where(request => ((int)request.NeedCategories & (int)category.Value) != 0);
-        if (moderationStatus is not null) requests = requests.Where(request => request.ModerationStatus == moderationStatus);
-        if (!string.IsNullOrWhiteSpace(query))
         {
-            var normalized = SearchTextNormalizer.Normalize(query);
-            requests = requests.Where(request => request.SearchText!.Contains(normalized));
+            return BadRequest("Invalid help-request query parameters.");
         }
 
-        var ordered = sort switch
-        {
-            HelpRequestSortOption.Newest => requests.OrderByDescending(request => request.CreatedAt).ThenByDescending(request => request.Id),
-            HelpRequestSortOption.RecentlyUpdated => requests.OrderByDescending(request => request.UpdatedAt).ThenByDescending(request => request.Id),
-            HelpRequestSortOption.NeededSoon => requests
-                .OrderBy(request => request.NeededBy == null)
-                .ThenBy(request => request.NeededBy)
-                .ThenByDescending(request => request.Priority)
-                .ThenBy(request => request.Id),
-            _ => requests.OrderByDescending(request => request.Priority).ThenByDescending(request => request.CreatedAt).ThenByDescending(request => request.Id),
-        };
+        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
+        var criteria = new HelpRequestQueryCriteria(
+            earthquake?.Id,
+            query,
+            priority,
+            category,
+            status,
+            moderationStatus,
+            sort);
+        var ordered = helpRequests.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(request => request.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -78,24 +60,28 @@ public class HelpRequestsController(
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
     {
-        var request = await db.HelpRequests.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id && item.ModerationStatus != HelpRequestModerationStatus.Rejected, cancellationToken);
-        if (request is null) return NotFound();
-        var comments = await db.HelpRequestComments.AsNoTracking()
-            .Where(comment => comment.HelpRequestId == id && !comment.IsHidden)
-            .OrderByDescending(comment => comment.CreatedAt)
-            .Take(20)
-            .ToListAsync(cancellationToken);
+        var request = await helpRequests.GetPublicAsync(id, cancellationToken);
+        if (request is null)
+        {
+            return NotFound();
+        }
+        var comments = await helpRequests.GetRecentPublicCommentsAsync(id, 20, cancellationToken);
         return Ok(request.ToResponse(comments.Select(comment => comment.ToResponse()).ToList()));
     }
 
     [HttpGet("{id:guid}/comments")]
     public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
-        var request = await db.HelpRequests.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id && item.ModerationStatus != HelpRequestModerationStatus.Rejected, cancellationToken);
-        if (request is null) return NotFound();
-        var comments = commentsRepository.QueryAll().AsNoTracking().Where(comment => comment.HelpRequestId == id && !comment.IsHidden);
-        var ordered = comments.OrderByDescending(comment => comment.CreatedAt).ThenByDescending(comment => comment.Id);
+        if (!PaginationParameters.IsValid(page, pageSize))
+        {
+            return BadRequest("Invalid pagination.");
+        }
+        var request = await helpRequests.GetPublicAsync(id, cancellationToken);
+        if (request is null)
+        {
+            return NotFound();
+        }
+        var ordered = helpRequests.GetPublicCommentsQuery(id);
         var projected = ordered.SelectOrdered(comment => comment.ToResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -104,95 +90,170 @@ public class HelpRequestsController(
     public async Task<IActionResult> Create(CreateHelpRequestRequest request, CancellationToken cancellationToken)
     {
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
-        if (!challenge.Success) return BadRequest("Human verification failed.");
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "Verification service unavailable.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("Human verification failed.");
+        }
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return UnprocessableEntity("No active earthquake is configured.");
+        if (earthquake is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
         var code = MissingPersonSecurity.CreateManagementCode();
         var helpRequest = CreateEntity(request, earthquake.Id, HelpRequestSource.Community, HelpRequestModerationStatus.Pending, code);
-        db.HelpRequests.Add(helpRequest);
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.CreateAsync(helpRequest, cancellationToken);
         return CreatedAtAction(nameof(Get), new { id = helpRequest.Id }, new CreateHelpRequestResponse(helpRequest.ToResponse(), code));
     }
 
     [HttpPost("management/lookup")]
     public async Task<IActionResult> LookupManagementCode(HelpRequestManagementCodeRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ManagementCode)) return BadRequest("Management code is required.");
+        if (string.IsNullOrWhiteSpace(request.ManagementCode))
+        {
+            return BadRequest("Management code is required.");
+        }
         var hash = MissingPersonSecurity.HashManagementCode(request.ManagementCode);
-        var helpRequest = await db.HelpRequests.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.ManagementCodeHash == hash &&
-                item.ModerationStatus != HelpRequestModerationStatus.Rejected, cancellationToken);
+        var helpRequest = await helpRequests.GetByManagementCodeHashAsync(hash, cancellationToken);
         return helpRequest is null ? NotFound() : Ok(helpRequest.ToResponse());
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpdateHelpRequestRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
-        var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (helpRequest is null) return NotFound();
-        if (!Authorize(code, helpRequest)) return Unauthorized();
+        var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
+        if (!Authorize(code, helpRequest))
+        {
+            return Unauthorized();
+        }
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
         Apply(helpRequest, request);
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.PersistUpdateAsync(helpRequest, cancellationToken);
         return Ok(helpRequest.ToResponse());
     }
 
     [HttpPatch("{id:guid}/status")]
     public async Task<IActionResult> Status(Guid id, UpdateHelpRequestStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
-        if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid status.");
-        var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (helpRequest is null) return NotFound();
-        if (!Authorize(code, helpRequest)) return Unauthorized();
+        if (!Enum.IsDefined(request.Status))
+        {
+            return BadRequest("Invalid status.");
+        }
+        var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
+        if (!Authorize(code, helpRequest))
+        {
+            return Unauthorized();
+        }
         helpRequest.Status = request.Status;
         helpRequest.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.PersistUpdateAsync(helpRequest, cancellationToken);
         return Ok(helpRequest.ToResponse());
     }
 
     [HttpPost("{id:guid}/comments")]
     public async Task<IActionResult> CreateComment(Guid id, CreateHelpRequestCommentRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000) return BadRequest("A comment is required.");
+        if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
+        {
+            return BadRequest("A comment is required.");
+        }
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
-        if (!challenge.Success) return BadRequest("Human verification failed.");
-        var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id && item.ModerationStatus != HelpRequestModerationStatus.Rejected, cancellationToken);
-        if (helpRequest is null) return NotFound();
-        if (helpRequest.Status == HelpRequestStatus.Resolved) return Conflict("This request is resolved.");
-        var comment = new HelpRequestComment { Id = Guid.NewGuid(), HelpRequestId = id, DisplayName = request.DisplayName?.Trim(), Message = request.Message.Trim() };
-        db.HelpRequestComments.Add(comment);
-        await db.SaveChangesAsync(cancellationToken);
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "Verification service unavailable.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("Human verification failed.");
+        }
+        var helpRequest = await helpRequests.GetPublicAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
+        if (helpRequest.Status == HelpRequestStatus.Resolved)
+        {
+            return Conflict("This request is resolved.");
+        }
+        var comment = new HelpRequestComment
+        {
+            Id = Guid.NewGuid(),
+            HelpRequestId = id,
+            DisplayName = request.DisplayName?.Trim(),
+            Message = request.Message.Trim()
+        };
+        await helpRequests.CreateCommentAsync(comment, cancellationToken);
         return Created($"/api/help-requests/{id}/comments/{comment.Id}", comment.ToResponse());
     }
 
     [HttpPatch("{id:guid}/comments/{commentId:guid}/visibility")]
     public async Task<IActionResult> HideComment(Guid id, Guid commentId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
-        var helpRequest = await db.HelpRequests.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (helpRequest is null) return NotFound();
-        if (!Authorize(code, helpRequest)) return Unauthorized();
-        var comment = await db.HelpRequestComments.SingleOrDefaultAsync(item => item.Id == commentId && item.HelpRequestId == id, cancellationToken);
-        if (comment is null) return NotFound();
-        comment.IsHidden = true;
-        await db.SaveChangesAsync(cancellationToken);
+        var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
+        if (!Authorize(code, helpRequest))
+        {
+            return Unauthorized();
+        }
+        if (!await helpRequests.HideCommentAsync(id, commentId, cancellationToken))
+        {
+            return NotFound();
+        }
         return NoContent();
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
     public async Task<IActionResult> Abuse(Guid id, HelpRequestAbuseReportRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 200) return BadRequest("A reason is required.");
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 200)
+        {
+            return BadRequest("A reason is required.");
+        }
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
-        if (!challenge.Success) return BadRequest("Human verification failed.");
-        if (!await db.HelpRequests.AnyAsync(item => item.Id == id, cancellationToken)) return NotFound();
-        db.HelpRequestAbuseReports.Add(new HelpRequestAbuseReport { Id = Guid.NewGuid(), HelpRequestId = id, Reason = request.Reason.Trim(), Details = request.Details?.Trim() });
-        await db.SaveChangesAsync(cancellationToken);
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "Verification service unavailable.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("Human verification failed.");
+        }
+        if (!await helpRequests.ExistsAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var report = new HelpRequestAbuseReport
+        {
+            Id = Guid.NewGuid(),
+            HelpRequestId = id,
+            Reason = request.Reason.Trim(),
+            Details = request.Details?.Trim()
+        };
+        await helpRequests.CreateAbuseReportAsync(report, cancellationToken);
         return Accepted();
     }
 
@@ -204,14 +265,16 @@ public class HelpRequestsController(
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
-        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
+        if (!PaginationParameters.IsValid(page, pageSize))
+        {
+            return BadRequest("Invalid pagination.");
+        }
 
-        var requests = requestsRepository.QueryAll().AsNoTracking()
-            .Where(item => item.ModerationStatus == HelpRequestModerationStatus.Pending);
-        var ordered = requests
-            .OrderBy(item => item.CreatedAt)
-            .ThenBy(item => item.Id);
+        var ordered = helpRequests.GetPendingQuery();
         var projected = ordered.SelectOrdered(item => item.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -223,19 +286,27 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return UnprocessableEntity("No active earthquake is configured.");
+        if (earthquake is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
 
         var helpRequest = CreateEntity(request, earthquake.Id, HelpRequestSource.Official, HelpRequestModerationStatus.Approved, null);
         helpRequest.ModeratedAt = DateTimeOffset.UtcNow;
         helpRequest.ModeratedBy = moderator?.Trim();
-        db.HelpRequests.Add(helpRequest);
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.CreateAsync(helpRequest, cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { id = helpRequest.Id }, helpRequest.ToResponse());
     }
@@ -247,16 +318,25 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
-        var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (helpRequest is null) return NotFound();
+        var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
 
         Apply(helpRequest, request);
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.PersistUpdateAsync(helpRequest, cancellationToken);
         return Ok(helpRequest.ToResponse());
     }
 
@@ -268,16 +348,22 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key) || !Enum.IsDefined(request.Status)) return Unauthorized();
+        if (!moderationKey.IsValid(key) || !Enum.IsDefined(request.Status))
+        {
+            return Unauthorized();
+        }
 
-        var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (helpRequest is null) return NotFound();
+        var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
 
         helpRequest.ModerationStatus = request.Status;
         helpRequest.ModeratedAt = DateTimeOffset.UtcNow;
         helpRequest.ModeratedBy = moderator?.Trim();
         helpRequest.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.PersistUpdateAsync(helpRequest, cancellationToken);
         return Ok(helpRequest.ToResponse());
     }
 
@@ -288,14 +374,20 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key) || !Enum.IsDefined(request.Status)) return Unauthorized();
+        if (!moderationKey.IsValid(key) || !Enum.IsDefined(request.Status))
+        {
+            return Unauthorized();
+        }
 
-        var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (helpRequest is null) return NotFound();
+        var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
+        if (helpRequest is null)
+        {
+            return NotFound();
+        }
 
         helpRequest.Status = request.Status;
         helpRequest.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await helpRequests.PersistUpdateAsync(helpRequest, cancellationToken);
         return Ok(helpRequest.ToResponse());
     }
 
@@ -306,14 +398,15 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
-        var comment = await db.HelpRequestComments
-            .SingleOrDefaultAsync(item => item.Id == commentId && item.HelpRequestId == id, cancellationToken);
-        if (comment is null) return NotFound();
-
-        comment.IsHidden = true;
-        await db.SaveChangesAsync(cancellationToken);
+        if (!await helpRequests.HideCommentAsync(id, commentId, cancellationToken))
+        {
+            return NotFound();
+        }
         return NoContent();
     }
 
@@ -393,13 +486,34 @@ public class HelpRequestsController(
         HelpRequestPriority priority,
         HelpNeedCategory categories)
     {
-        if (string.IsNullOrWhiteSpace(title) || title.Length > 200) return "Title is required.";
-        if (string.IsNullOrWhiteSpace(requester) || requester.Length > 200) return "Requester name is required.";
-        if (string.IsNullOrWhiteSpace(address) || address.Length > 400) return "Address is required.";
-        if (string.IsNullOrWhiteSpace(details) || details.Length > 3000) return "Need details are required.";
-        if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(whatsApp)) return "A public phone or WhatsApp number is required.";
-        if (!Enum.IsDefined(priority)) return "Invalid priority.";
-        if (!ValidCategories(categories)) return "At least one need category is required.";
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 200)
+        {
+            return "Title is required.";
+        }
+        if (string.IsNullOrWhiteSpace(requester) || requester.Length > 200)
+        {
+            return "Requester name is required.";
+        }
+        if (string.IsNullOrWhiteSpace(address) || address.Length > 400)
+        {
+            return "Address is required.";
+        }
+        if (string.IsNullOrWhiteSpace(details) || details.Length > 3000)
+        {
+            return "Need details are required.";
+        }
+        if (string.IsNullOrWhiteSpace(phone) && string.IsNullOrWhiteSpace(whatsApp))
+        {
+            return "A public phone or WhatsApp number is required.";
+        }
+        if (!Enum.IsDefined(priority))
+        {
+            return "Invalid priority.";
+        }
+        if (!ValidCategories(categories))
+        {
+            return "At least one need category is required.";
+        }
         return null;
     }
 

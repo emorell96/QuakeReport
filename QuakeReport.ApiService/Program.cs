@@ -1,9 +1,15 @@
+using QuakeReport.ApiService.BloodDonationCenters;
+using QuakeReport.ApiService.CollectionPoints;
 using QuakeReport.ApiService.Earthquakes;
+using QuakeReport.ApiService.GeocodingReview;
+using QuakeReport.ApiService.HelpRequests;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Ingestion;
+using QuakeReport.ApiService.Reports;
 using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Persistence;
+using QuakeReport.ApiService.Shelters;
 using QuakeReport.Data;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.Geospatial;
@@ -72,7 +78,15 @@ builder.Services.AddHttpClient("turnstile", client =>
     client.Timeout = TimeSpan.FromSeconds(5);
 });
 
-builder.Services.AddScoped<ActiveEarthquakeService>();
+builder.Services.AddScoped<IActiveEarthquakeService, ActiveEarthquakeService>();
+builder.Services.AddScoped<IBloodDonationCenterService, BloodDonationCenterService>();
+builder.Services.AddScoped<ICollectionPointService, CollectionPointService>();
+builder.Services.AddScoped<IHelpRequestService, HelpRequestService>();
+builder.Services.AddScoped<IMissingPersonService, MissingPersonService>();
+builder.Services.AddScoped<IDamageReportService, DamageReportService>();
+builder.Services.AddScoped<IShelterService, ShelterService>();
+builder.Services.AddScoped<IIngestionPersistenceService, IngestionPersistenceService>();
+builder.Services.AddScoped<IGeocodingReviewService, GeocodingReviewService>();
 builder.Services.AddScoped<IMediaStorage, AzureBlobMediaStorage>();
 builder.Services.AddScoped<MissingPersonSecurity>();
 builder.Services.AddScoped<ITurnstileValidator, TurnstileValidator>();

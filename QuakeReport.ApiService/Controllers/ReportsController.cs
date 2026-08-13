@@ -1,15 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Reports;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
-using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
-using StorageGenerics.Core.Contracts;
 using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
@@ -18,10 +16,9 @@ namespace QuakeReport.ApiService.Controllers;
 [ApiController]
 [Route("api/reports")]
 public class ReportsController(
-    QuakeReportDbContext dbContext,
-    ActiveEarthquakeService activeEarthquakeService,
-    IMediaStorage mediaStorage,
-    IQueryableRepositoryService<DamageReport, Guid> reportsRepository) : ControllerBase
+    IDamageReportService reports,
+    IActiveEarthquakeService activeEarthquakeService,
+    IMediaStorage mediaStorage) : ControllerBase
 {
     private const long MaxMediaSizeBytes = 50 * 1024 * 1024; // 50 MB
 
@@ -65,29 +62,8 @@ public class ReportsController(
             });
         }
 
-        var query = reportsRepository.QueryAll().AsNoTracking();
-        if (severity.HasValue)
-        {
-            query = query.Where(report => report.Severity == severity.Value);
-        }
-
-        var orderedQuery = sort switch
-        {
-            ReportSortOption.Oldest => query
-                .OrderBy(report => report.CreatedAt)
-                .ThenBy(report => report.Id),
-            ReportSortOption.HighestSeverity => query
-                .OrderByDescending(report => report.Severity)
-                .ThenByDescending(report => report.CreatedAt)
-                .ThenByDescending(report => report.Id),
-            ReportSortOption.LowestSeverity => query
-                .OrderBy(report => report.Severity)
-                .ThenByDescending(report => report.CreatedAt)
-                .ThenByDescending(report => report.Id),
-            _ => query
-                .OrderByDescending(report => report.CreatedAt)
-                .ThenByDescending(report => report.Id),
-        };
+        var criteria = new DamageReportQueryCriteria(severity, sort);
+        var orderedQuery = reports.GetOrderedQuery(criteria);
 
         var projected = orderedQuery.SelectOrdered(report => report.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
@@ -98,9 +74,7 @@ public class ReportsController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var report = await dbContext.DamageReports
-            .Include(r => r.Media)
-            .SingleOrDefaultAsync(r => r.Id == id, cancellationToken);
+        var report = await reports.GetAsync(id, cancellationToken);
 
         if (report is null)
         {
@@ -139,8 +113,7 @@ public class ReportsController(
             Address = request.Address,
         };
 
-        dbContext.DamageReports.Add(report);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await reports.CreateAsync(report, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id = report.Id }, report.ToResponse());
     }
@@ -152,7 +125,7 @@ public class ReportsController(
     [RequestSizeLimit(MaxMediaSizeBytes)]
     public async Task<IActionResult> UploadMedia(Guid id, [FromForm] UploadReportMediaRequest request, CancellationToken cancellationToken)
     {
-        var reportExists = await dbContext.DamageReports.AnyAsync(r => r.Id == id, cancellationToken);
+        var reportExists = await reports.ExistsAsync(id, cancellationToken);
         if (!reportExists)
         {
             return NotFound();
@@ -194,8 +167,7 @@ public class ReportsController(
                 id, media.Id, file.FileName, file.ContentType, stream, cancellationToken);
         }
 
-        dbContext.ReportMedia.Add(media);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await reports.AttachMediaAsync(media, cancellationToken);
 
         return CreatedAtAction(nameof(GetById), new { id }, media.ToResponse());
     }

@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using QuakeReport.ApiService.CollectionPoints;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
@@ -8,10 +8,8 @@ using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
-using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
-using StorageGenerics.Core.Contracts;
 using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
@@ -19,12 +17,10 @@ namespace QuakeReport.ApiService.Controllers;
 [ApiController]
 [Route("api/collection-points")]
 public class CollectionPointsController(
-    QuakeReportDbContext db,
-    ActiveEarthquakeService earthquakes,
+    ICollectionPointService collectionPoints,
+    IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey,
-    IQueryableRepositoryService<CollectionPoint, Guid> pointsRepository,
-    IQueryableRepositoryService<CollectionPointComment, Guid> commentsRepository) : ControllerBase
+    IModerationKeyValidator moderationKey) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? query = null,
@@ -40,35 +36,20 @@ public class CollectionPointsController(
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             (latitude.HasValue != longitude.HasValue) ||
             (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
+        {
             return BadRequest("Invalid collection-point query parameters.");
+        }
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        Guid? earthquakeId = earthquake?.Id;
-        var points = pointsRepository.QueryAll().AsNoTracking().Where(point => point.EarthquakeId == earthquakeId && point.ModerationStatus != CollectionPointModerationStatus.Rejected);
-        if (moderationStatus is not null) points = points.Where(point => point.ModerationStatus == moderationStatus);
-        if (operationalStatus is not null) points = points.Where(point => point.OperationalStatus == operationalStatus);
-        else points = points.Where(point => point.OperationalStatus != CollectionPointOperationalStatus.Closed);
-        if (!string.IsNullOrWhiteSpace(query))
-        {
-            var normalized = SearchTextNormalizer.Normalize(query);
-            points = points.Where(point => point.SearchText!.Contains(normalized));
-        }
-
-        if (latitude.HasValue)
-        {
-            var candidates = points.Where(point => point.Location != null);
-            var nearest = candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
-                .ThenBy(point => point.Id);
-            var nearestProjected = nearest.SelectOrdered(point => point.ToSummaryResponse());
-            return Ok(await nearestProjected.ToPagedResultAsync(page, pageSize, cancellationToken));
-        }
-
-        var ordered = sort switch
-        {
-            CollectionPointSortOption.RecentlyUpdated => points.OrderByDescending(point => point.UpdatedAt).ThenByDescending(point => point.Id),
-            CollectionPointSortOption.Name => points.OrderBy(point => point.Name).ThenBy(point => point.Id),
-            _ => points.OrderByDescending(point => point.CreatedAt).ThenByDescending(point => point.Id),
-        };
+        var criteria = new CollectionPointQueryCriteria(
+            earthquake?.Id,
+            query,
+            operationalStatus,
+            moderationStatus,
+            sort,
+            latitude,
+            longitude);
+        var ordered = collectionPoints.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(point => point.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -76,23 +57,30 @@ public class CollectionPointsController(
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
     {
-        var point = await db.CollectionPoints.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id && item.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken);
-        if (point is null) return NotFound();
-        var comments = await db.CollectionPointComments.AsNoTracking()
-            .Where(comment => comment.CollectionPointId == id && !comment.IsHidden)
-            .OrderByDescending(comment => comment.CreatedAt)
-            .Take(20)
-            .ToListAsync(cancellationToken);
+        var point = await collectionPoints.GetPublicAsync(id, cancellationToken);
+        if (point is null)
+        {
+            return NotFound();
+        }
+
+        var comments = await collectionPoints.GetRecentPublicCommentsAsync(id, 20, cancellationToken);
         return Ok(point.ToResponse(comments.Select(comment => comment.ToResponse()).ToList()));
     }
 
     [HttpGet("{id:guid}/comments")]
     public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
-        if (!await db.CollectionPoints.AnyAsync(point => point.Id == id && point.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken)) return NotFound();
-        var comments = commentsRepository.QueryAll().AsNoTracking().Where(comment => comment.CollectionPointId == id && !comment.IsHidden);
-        var ordered = comments.OrderByDescending(comment => comment.CreatedAt).ThenByDescending(comment => comment.Id);
+        if (!PaginationParameters.IsValid(page, pageSize))
+        {
+            return BadRequest("Invalid pagination.");
+        }
+
+        if (!await collectionPoints.PublicExistsAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var ordered = collectionPoints.GetPublicCommentsQuery(id);
         var projected = ordered.SelectOrdered(comment => comment.ToResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -101,94 +89,181 @@ public class CollectionPointsController(
     public async Task<IActionResult> Create(CreateCollectionPointRequest request, CancellationToken cancellationToken)
     {
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
-        if (!challenge.Success) return BadRequest("Human verification failed.");
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "Verification service unavailable.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("Human verification failed.");
+        }
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return UnprocessableEntity("No active earthquake is configured.");
+        if (earthquake is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
         var code = MissingPersonSecurity.CreateManagementCode();
         var point = CreateEntity(request, earthquake.Id, CollectionPointSource.Community, CollectionPointModerationStatus.Pending, code);
-        db.CollectionPoints.Add(point);
-        await db.SaveChangesAsync(cancellationToken);
+        await collectionPoints.CreateAsync(point, cancellationToken);
         return CreatedAtAction(nameof(Get), new { id = point.Id }, new CreateCollectionPointResponse(point.ToResponse(), code));
     }
 
     [HttpPost("management/lookup")]
     public async Task<IActionResult> LookupManagementCode(CollectionPointManagementCodeRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.ManagementCode)) return BadRequest("Management code is required.");
+        if (string.IsNullOrWhiteSpace(request.ManagementCode))
+        {
+            return BadRequest("Management code is required.");
+        }
+
         var hash = MissingPersonSecurity.HashManagementCode(request.ManagementCode);
-        var point = await db.CollectionPoints.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.ManagementCodeHash == hash &&
-                item.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken);
-        if (point is null) return NotFound();
+        var point = await collectionPoints.GetByManagementCodeHashAsync(hash, cancellationToken);
+        if (point is null)
+        {
+            return NotFound();
+        }
+
         return Ok(point.ToResponse());
     }
 
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Update(Guid id, UpdateCollectionPointRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
-        var point = await db.CollectionPoints.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (point is null) return NotFound();
-        if (!Authorize(code, point)) return Unauthorized();
+        var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
+        if (point is null)
+        {
+            return NotFound();
+        }
+
+        if (!Authorize(code, point))
+        {
+            return Unauthorized();
+        }
+
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
+
         Apply(point, request);
-        await db.SaveChangesAsync(cancellationToken);
+        await collectionPoints.PersistUpdateAsync(point, cancellationToken);
         return Ok(point.ToResponse());
     }
 
     [HttpPatch("{id:guid}/status")]
     public async Task<IActionResult> Status(Guid id, UpdateCollectionPointStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
-        var point = await db.CollectionPoints.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (point is null) return NotFound();
-        if (!Authorize(code, point)) return Unauthorized();
-        if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid status.");
+        var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
+        if (point is null)
+        {
+            return NotFound();
+        }
+
+        if (!Authorize(code, point))
+        {
+            return Unauthorized();
+        }
+
+        if (!Enum.IsDefined(request.Status))
+        {
+            return BadRequest("Invalid status.");
+        }
+
         point.OperationalStatus = request.Status;
         point.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await collectionPoints.PersistUpdateAsync(point, cancellationToken);
         return Ok(point.ToResponse());
     }
 
     [HttpPost("{id:guid}/comments")]
     public async Task<IActionResult> CreateComment(Guid id, CreateCollectionPointCommentRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000) return BadRequest("A comment is required.");
+        if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
+        {
+            return BadRequest("A comment is required.");
+        }
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
-        if (!challenge.Success) return BadRequest("Human verification failed.");
-        if (!await db.CollectionPoints.AnyAsync(point => point.Id == id && point.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken)) return NotFound();
-        var comment = new CollectionPointComment { Id = Guid.NewGuid(), CollectionPointId = id, DisplayName = request.DisplayName?.Trim(), Message = request.Message.Trim() };
-        db.CollectionPointComments.Add(comment);
-        await db.SaveChangesAsync(cancellationToken);
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "Verification service unavailable.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("Human verification failed.");
+        }
+        if (!await collectionPoints.PublicExistsAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var comment = new CollectionPointComment
+        {
+            Id = Guid.NewGuid(),
+            CollectionPointId = id,
+            DisplayName = request.DisplayName?.Trim(),
+            Message = request.Message.Trim()
+        };
+        await collectionPoints.CreateCommentAsync(comment, cancellationToken);
         return Created($"/api/collection-points/{id}/comments/{comment.Id}", comment.ToResponse());
     }
 
     [HttpPatch("{id:guid}/comments/{commentId:guid}/visibility")]
     public async Task<IActionResult> HideComment(Guid id, Guid commentId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
-        var point = await db.CollectionPoints.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (point is null) return NotFound();
-        if (!Authorize(code, point)) return Unauthorized();
-        var comment = await db.CollectionPointComments.SingleOrDefaultAsync(item => item.Id == commentId && item.CollectionPointId == id, cancellationToken);
-        if (comment is null) return NotFound();
-        comment.IsHidden = true;
-        await db.SaveChangesAsync(cancellationToken);
+        var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
+        if (point is null)
+        {
+            return NotFound();
+        }
+
+        if (!Authorize(code, point))
+        {
+            return Unauthorized();
+        }
+
+        if (!await collectionPoints.HideCommentAsync(id, commentId, cancellationToken))
+        {
+            return NotFound();
+        }
+
         return NoContent();
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
     public async Task<IActionResult> Abuse(Guid id, CollectionPointAbuseReportRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Reason)) return BadRequest("A reason is required.");
+        if (string.IsNullOrWhiteSpace(request.Reason))
+        {
+            return BadRequest("A reason is required.");
+        }
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
-        if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
-        if (!challenge.Success) return BadRequest("Human verification failed.");
-        if (!await db.CollectionPoints.AnyAsync(point => point.Id == id, cancellationToken)) return NotFound();
-        db.CollectionPointAbuseReports.Add(new CollectionPointAbuseReport { Id = Guid.NewGuid(), CollectionPointId = id, Reason = request.Reason.Trim(), Details = request.Details?.Trim() });
-        await db.SaveChangesAsync(cancellationToken);
+        if (challenge.ProviderUnavailable)
+        {
+            return StatusCode(503, "Verification service unavailable.");
+        }
+        if (!challenge.Success)
+        {
+            return BadRequest("Human verification failed.");
+        }
+        if (!await collectionPoints.ExistsAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        var report = new CollectionPointAbuseReport
+        {
+            Id = Guid.NewGuid(),
+            CollectionPointId = id,
+            Reason = request.Reason.Trim(),
+            Details = request.Details?.Trim()
+        };
+        await collectionPoints.CreateAbuseReportAsync(report, cancellationToken);
         return Accepted();
     }
 
@@ -200,13 +275,16 @@ public class CollectionPointsController(
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
-        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
+        if (!PaginationParameters.IsValid(page, pageSize))
+        {
+            return BadRequest("Invalid pagination.");
+        }
 
-        var points = pointsRepository.QueryAll().AsNoTracking()
-            .Where(point => point.ModerationStatus == CollectionPointModerationStatus.Pending)
-            .OrderBy(point => point.CreatedAt)
-            .ThenBy(point => point.Id);
+        var points = collectionPoints.GetPendingQuery();
         var projected = points.SelectOrdered(point => point.ToSummaryResponse());
         return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
@@ -218,19 +296,27 @@ public class CollectionPointsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
         var error = Validate(request);
-        if (error is not null) return BadRequest(error);
+        if (error is not null)
+        {
+            return BadRequest(error);
+        }
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return UnprocessableEntity("No active earthquake is configured.");
+        if (earthquake is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
 
         var point = CreateEntity(request, earthquake.Id, CollectionPointSource.Official, CollectionPointModerationStatus.Approved, null);
         point.ModeratedAt = DateTimeOffset.UtcNow;
         point.ModeratedBy = moderator?.Trim();
-        db.CollectionPoints.Add(point);
-        await db.SaveChangesAsync(cancellationToken);
+        await collectionPoints.CreateAsync(point, cancellationToken);
 
         return CreatedAtAction(nameof(Get), new { id = point.Id }, point.ToResponse());
     }
@@ -243,17 +329,26 @@ public class CollectionPointsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
-        if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid moderation status.");
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
+        if (!Enum.IsDefined(request.Status))
+        {
+            return BadRequest("Invalid moderation status.");
+        }
 
-        var point = await db.CollectionPoints.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
-        if (point is null) return NotFound();
+        var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
+        if (point is null)
+        {
+            return NotFound();
+        }
 
         point.ModerationStatus = request.Status;
         point.ModeratedAt = DateTimeOffset.UtcNow;
         point.ModeratedBy = moderator?.Trim();
         point.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
+        await collectionPoints.PersistUpdateAsync(point, cancellationToken);
         return Ok(point.ToResponse());
     }
 
@@ -264,14 +359,16 @@ public class CollectionPointsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key))
+        {
+            return Unauthorized();
+        }
 
-        var comment = await db.CollectionPointComments
-            .SingleOrDefaultAsync(item => item.Id == commentId && item.CollectionPointId == id, cancellationToken);
-        if (comment is null) return NotFound();
+        if (!await collectionPoints.HideCommentAsync(id, commentId, cancellationToken))
+        {
+            return NotFound();
+        }
 
-        comment.IsHidden = true;
-        await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
 
@@ -338,11 +435,26 @@ public class CollectionPointsController(
 
     private static string? ValidateCore(string name, string address, string needs, string instructions, DateTimeOffset? endsAt)
     {
-        if (string.IsNullOrWhiteSpace(name) || name.Length > 200) return "Name is required.";
-        if (string.IsNullOrWhiteSpace(address) || address.Length > 400) return "Address is required.";
-        if (string.IsNullOrWhiteSpace(needs) || needs.Length > 2000) return "Current needs are required.";
-        if (string.IsNullOrWhiteSpace(instructions) || instructions.Length > 2000) return "Receiving instructions are required.";
-        if (endsAt is not null && endsAt < DateTimeOffset.UtcNow.AddMinutes(-5)) return "End date cannot be in the past.";
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
+        {
+            return "Name is required.";
+        }
+        if (string.IsNullOrWhiteSpace(address) || address.Length > 400)
+        {
+            return "Address is required.";
+        }
+        if (string.IsNullOrWhiteSpace(needs) || needs.Length > 2000)
+        {
+            return "Current needs are required.";
+        }
+        if (string.IsNullOrWhiteSpace(instructions) || instructions.Length > 2000)
+        {
+            return "Receiving instructions are required.";
+        }
+        if (endsAt is not null && endsAt < DateTimeOffset.UtcNow.AddMinutes(-5))
+        {
+            return "End date cannot be in the past.";
+        }
         return null;
     }
 

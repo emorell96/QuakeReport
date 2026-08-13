@@ -80,8 +80,15 @@ public class MissingPeopleControllerTests
     }
 
     private static MissingPeopleController CreateController(QuakeReportDbContext db) =>
-        new(db, new ActiveEarthquakeService(db), new MissingPersonSecurity(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MissingPeople:IdHmacKey"] = "test-secret" }).Build()), new AlwaysTurnstile(), new NoopPhotoStorage(),
-            TestRepository.Create<MissingPerson>(db), TestRepository.Create<MissingPersonTip>(db));
+        new(
+            new MissingPersonService(
+                db,
+                TestRepository.Create<MissingPerson>(db),
+                TestRepository.Create<MissingPersonTip>(db)),
+            new ActiveEarthquakeService(db),
+            new MissingPersonSecurity(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MissingPeople:IdHmacKey"] = "test-secret" }).Build()),
+            new AlwaysTurnstile(),
+            new NoopPhotoStorage());
 
     private static CreateMissingPersonRequest Request(string name, string? document) =>
         new(name, null, "30", document is null ? null : IdentificationDocumentType.ColombianCitizenId, document, "Descripción", null, null, DateTimeOffset.UtcNow.AddHours(-1), [new("Bogotá", null, null, null)], true, "token");
