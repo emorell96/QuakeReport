@@ -119,7 +119,16 @@ public class CollectionPointsControllerTests
 
     private static CollectionPoint Point(Guid earthquakeId, string name, CollectionPointModerationStatus moderation, CollectionPointOperationalStatus operational) => new()
     {
-        Id = Guid.NewGuid(), EarthquakeId = earthquakeId, Name = name, Address = "Calle 1", SearchText = name.ToUpperInvariant(), NeedsSummary = "Agua", ReceivingInstructions = "Recibir", ModerationStatus = moderation, OperationalStatus = operational, Source = CollectionPointSource.Community,
+        Id = Guid.NewGuid(),
+        EarthquakeId = earthquakeId,
+        Name = name,
+        Address = "Calle 1",
+        SearchText = name.ToUpperInvariant(),
+        NeedsSummary = "Agua",
+        ReceivingInstructions = "Recibir",
+        ModerationStatus = moderation,
+        OperationalStatus = operational,
+        Source = CollectionPointSource.Community,
         ManagementCodeHash = "hash", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
     };
 

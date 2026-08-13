@@ -141,7 +141,10 @@ public class MissingPeopleController(
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
         if (earthquake is null) return NotFound();
         var person = await db.MissingPeople.AsNoTracking().Include(item => item.Locations)
-            .SingleOrDefaultAsync(item => item.EarthquakeId == earthquake.Id && item.IdentificationDocumentType == request.DocumentType && item.IdentificationNumberHash == hash && item.Status != MissingPersonStatus.Closed, cancellationToken);
+            .SingleOrDefaultAsync(item => item.EarthquakeId == earthquake.Id &&
+                item.IdentificationDocumentType == request.DocumentType &&
+                item.IdentificationNumberHash == hash &&
+                item.Status != MissingPersonStatus.Closed, cancellationToken);
         return person is null ? NotFound() : Ok(person.ToResponse());
     }
 
@@ -153,7 +156,18 @@ public class MissingPeopleController(
         if (challenge.ProviderUnavailable) return StatusCode(503, "Verification service unavailable.");
         if (!challenge.Success) return BadRequest("Human verification failed.");
         if (!await db.MissingPeople.AnyAsync(person => person.Id == id && person.Status != MissingPersonStatus.Closed, cancellationToken)) return NotFound();
-        var tip = new MissingPersonTip { Id = Guid.NewGuid(), MissingPersonId = id, Message = request.Message.Trim(), SightedAt = request.SightedAt, Address = request.Address?.Trim(), Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude), ResponderName = request.ResponderName?.Trim(), ResponderPhone = request.ResponderPhone?.Trim(), ResponderEmail = request.ResponderEmail?.Trim() };
+        var tip = new MissingPersonTip
+        {
+            Id = Guid.NewGuid(),
+            MissingPersonId = id,
+            Message = request.Message.Trim(),
+            SightedAt = request.SightedAt,
+            Address = request.Address?.Trim(),
+            Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude),
+            ResponderName = request.ResponderName?.Trim(),
+            ResponderPhone = request.ResponderPhone?.Trim(),
+            ResponderEmail = request.ResponderEmail?.Trim()
+        };
         db.MissingPersonTips.Add(tip);
         await db.SaveChangesAsync(cancellationToken);
         return Created($"/api/missing-people/{id}/tips/{tip.Id}", tip.ToPublicResponse());
@@ -166,7 +180,9 @@ public class MissingPeopleController(
         var person = await db.MissingPeople.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (person is null) return NotFound();
         if (!Authorize(code, person)) return Unauthorized();
-        if (file.Length == 0 || file.Length > MaxPhotoSize || file.ContentType is not ("image/jpeg" or "image/png" or "image/webp")) return BadRequest("Only JPEG, PNG, and WebP images up to 10 MB are allowed.");
+        if (file.Length == 0 || file.Length > MaxPhotoSize ||
+            file.ContentType is not ("image/jpeg" or "image/png" or "image/webp"))
+            return BadRequest("Only JPEG, PNG, and WebP images up to 10 MB are allowed.");
         var extension = file.ContentType switch { "image/png" => ".png", "image/webp" => ".webp", _ => ".jpg" };
         await using var stream = file.OpenReadStream();
         person.PhotoUrl = await photos.UploadAsync(id, extension, stream, file.ContentType, cancellationToken);
@@ -182,7 +198,8 @@ public class MissingPeopleController(
         if (person is null) return NotFound();
         if (!Authorize(code, person)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid status.");
-        person.Status = request.Status; person.UpdatedAt = DateTimeOffset.UtcNow;
+        person.Status = request.Status;
+        person.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(person.ToResponse());
     }
@@ -195,9 +212,25 @@ public class MissingPeopleController(
         var person = await db.MissingPeople.Include(item => item.Locations).SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (person is null) return NotFound();
         if (!Authorize(code, person)) return Unauthorized();
-        person.FullName = request.FullName.Trim(); person.SearchName = NormalizeSearch(request.FullName + " " + request.Aliases); person.Aliases = request.Aliases?.Trim(); person.ApproximateAge = request.ApproximateAge?.Trim(); person.Description = request.Description.Trim(); person.PhysicalDescription = request.PhysicalDescription?.Trim(); person.ClothingDescription = request.ClothingDescription?.Trim(); person.LastSeenAt = request.LastSeenAt; person.UpdatedAt = DateTimeOffset.UtcNow;
+        person.FullName = request.FullName.Trim();
+        person.SearchName = NormalizeSearch(request.FullName + " " + request.Aliases);
+        person.Aliases = request.Aliases?.Trim();
+        person.ApproximateAge = request.ApproximateAge?.Trim();
+        person.Description = request.Description.Trim();
+        person.PhysicalDescription = request.PhysicalDescription?.Trim();
+        person.ClothingDescription = request.ClothingDescription?.Trim();
+        person.LastSeenAt = request.LastSeenAt;
+        person.UpdatedAt = DateTimeOffset.UtcNow;
         db.MissingPersonLocations.RemoveRange(person.Locations);
-        person.Locations = request.Locations.Select(location => new MissingPersonLocation { Id = Guid.NewGuid(), MissingPersonId = id, Address = location.Address.Trim(), SearchAddress = NormalizeSearch(location.Address), Location = GeoPoint.FromCoordinates(location.Latitude, location.Longitude), Note = location.Note?.Trim() }).ToList();
+        person.Locations = request.Locations.Select(location => new MissingPersonLocation
+        {
+            Id = Guid.NewGuid(),
+            MissingPersonId = id,
+            Address = location.Address.Trim(),
+            SearchAddress = NormalizeSearch(location.Address),
+            Location = GeoPoint.FromCoordinates(location.Latitude, location.Longitude),
+            Note = location.Note?.Trim()
+        }).ToList();
         await db.SaveChangesAsync(cancellationToken);
         return Ok(person.ToResponse());
     }
@@ -239,8 +272,19 @@ public class MissingPeopleController(
 
     private bool Authorize(string? code, MissingPerson person) => !string.IsNullOrWhiteSpace(code) && MissingPersonSecurity.Matches(code, person.ManagementCodeHash);
 
-    private static string NormalizeSearch(string? value) => string.IsNullOrWhiteSpace(value) ? string.Empty : new(value.Normalize(System.Text.NormalizationForm.FormD).Where(character => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character) || char.IsWhiteSpace(character)).Select(char.ToUpperInvariant).ToArray());
-    private static string? LastFour(string? value) { var normalized = value is null ? string.Empty : new(value.Where(char.IsLetterOrDigit).ToArray()); return normalized.Length == 0 ? null : normalized[^Math.Min(4, normalized.Length)..]; }
+    private static string NormalizeSearch(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : new(value.Normalize(System.Text.NormalizationForm.FormD)
+                .Where(character => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character)
+                    || char.IsWhiteSpace(character))
+                .Select(char.ToUpperInvariant)
+                .ToArray());
+    private static string? LastFour(string? value)
+    {
+        var normalized = value is null ? string.Empty : new(value.Where(char.IsLetterOrDigit).ToArray());
+        return normalized.Length == 0 ? null : normalized[^Math.Min(4, normalized.Length)..];
+    }
     private static string? ValidateCreate(CreateMissingPersonRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Length > 200) return "Full name is required.";

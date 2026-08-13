@@ -232,11 +232,35 @@ public class QuakeReportDbContext(DbContextOptions<QuakeReportDbContext> options
 
         modelBuilder.Entity<BloodDonationCenter>(entity =>
         {
-            entity.Property(e => e.Name).HasMaxLength(200).IsRequired(); entity.Property(e => e.OrganizationName).HasMaxLength(200); entity.Property(e => e.Address).HasMaxLength(400).IsRequired(); entity.Property(e => e.SearchText).HasMaxLength(2200); entity.Property(e => e.Description).HasMaxLength(3000); entity.Property(e => e.OperatingInstructions).HasMaxLength(2500).IsRequired(); entity.Property(e => e.NeedsSummary).HasMaxLength(2000).IsRequired(); entity.Property(e => e.PublicPhone).HasMaxLength(80).IsRequired(); entity.Property(e => e.PublicWhatsApp).HasMaxLength(80); entity.Property(e => e.PublicEmail).HasMaxLength(320); entity.Property(e => e.ManagementCodeHash).HasMaxLength(64); entity.Property(e => e.ModeratedBy).HasMaxLength(320);
-            entity.HasIndex(e => new { e.EarthquakeId, e.ModerationStatus, e.OperationalStatus, e.CenterType, e.CreatedAt }); entity.HasIndex(e => new { e.EarthquakeId, e.OperationalStatus, e.UpdatedAt }); entity.HasIndex(e => new { e.EarthquakeId, e.BloodTypes, e.Components }); entity.HasIndex(e => e.SearchText); entity.HasIndex(e => e.ManagementCodeHash).IsUnique(); entity.HasOne(e => e.Earthquake).WithMany().HasForeignKey(e => e.EarthquakeId).OnDelete(DeleteBehavior.Restrict);
+            entity.Property(e => e.Name).HasMaxLength(200).IsRequired();
+        entity.Property(e => e.OrganizationName).HasMaxLength(200);
+        entity.Property(e => e.Address).HasMaxLength(400).IsRequired();
+        entity.Property(e => e.SearchText).HasMaxLength(2200);
+        entity.Property(e => e.Description).HasMaxLength(3000);
+        entity.Property(e => e.OperatingInstructions).HasMaxLength(2500).IsRequired();
+        entity.Property(e => e.NeedsSummary).HasMaxLength(2000).IsRequired();
+        entity.Property(e => e.PublicPhone).HasMaxLength(80).IsRequired();
+        entity.Property(e => e.PublicWhatsApp).HasMaxLength(80);
+        entity.Property(e => e.PublicEmail).HasMaxLength(320);
+        entity.Property(e => e.ManagementCodeHash).HasMaxLength(64);
+        entity.Property(e => e.ModeratedBy).HasMaxLength(320);
+            entity.HasIndex(e => new { e.EarthquakeId, e.ModerationStatus, e.OperationalStatus, e.CenterType, e.CreatedAt });
+        entity.HasIndex(e => new { e.EarthquakeId, e.OperationalStatus, e.UpdatedAt });
+        entity.HasIndex(e => new { e.EarthquakeId, e.BloodTypes, e.Components });
+        entity.HasIndex(e => e.SearchText);
+        entity.HasIndex(e => e.ManagementCodeHash).IsUnique();
+        entity.HasOne(e => e.Earthquake).WithMany().HasForeignKey(e => e.EarthquakeId).OnDelete(DeleteBehavior.Restrict);
         });
-        modelBuilder.Entity<BloodDonationCenterComment>(entity => { entity.Property(e => e.DisplayName).HasMaxLength(100); entity.Property(e => e.Message).HasMaxLength(2000).IsRequired(); entity.HasIndex(e => new { e.BloodDonationCenterId, e.CreatedAt }); entity.HasOne(e => e.BloodDonationCenter).WithMany(e => e.Comments).HasForeignKey(e => e.BloodDonationCenterId).OnDelete(DeleteBehavior.Cascade); });
-        modelBuilder.Entity<BloodDonationCenterAbuseReport>(entity => { entity.Property(e => e.Reason).HasMaxLength(200).IsRequired(); entity.Property(e => e.Details).HasMaxLength(2000); entity.HasIndex(e => new { e.BloodDonationCenterId, e.CreatedAt }); entity.HasOne(e => e.BloodDonationCenter).WithMany(e => e.AbuseReports).HasForeignKey(e => e.BloodDonationCenterId).OnDelete(DeleteBehavior.Cascade); });
+        modelBuilder.Entity<BloodDonationCenterComment>(entity => { entity.Property(e => e.DisplayName).HasMaxLength(100);
+        entity.Property(e => e.Message).HasMaxLength(2000).IsRequired();
+        entity.HasIndex(e => new { e.BloodDonationCenterId, e.CreatedAt });
+        entity.HasOne(e => e.BloodDonationCenter).WithMany(e => e.Comments).HasForeignKey(e => e.BloodDonationCenterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        modelBuilder.Entity<BloodDonationCenterAbuseReport>(entity => { entity.Property(e => e.Reason).HasMaxLength(200).IsRequired();
+        entity.Property(e => e.Details).HasMaxLength(2000);
+        entity.HasIndex(e => new { e.BloodDonationCenterId, e.CreatedAt });
+        entity.HasOne(e => e.BloodDonationCenter).WithMany(e => e.AbuseReports).HasForeignKey(e => e.BloodDonationCenterId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         modelBuilder.Entity<IngestionSubmission>(entity =>
         {

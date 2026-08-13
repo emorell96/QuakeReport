@@ -60,7 +60,9 @@ public class CollectionPointsController(
             var count = await candidates.CountAsync(cancellationToken);
             var nearest = await candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
                 .ThenBy(point => point.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-            return Ok(new PagedResponse<CollectionPointSummaryResponse>(nearest.Select(point => point.ToSummaryResponse()).ToList(), page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
+            return Ok(new PagedResponse<CollectionPointSummaryResponse>(
+                nearest.Select(point => point.ToSummaryResponse()).ToList(),
+                page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
         }
 
         var total = await points.CountAsync(cancellationToken);
@@ -79,7 +81,11 @@ public class CollectionPointsController(
     {
         var point = await db.CollectionPoints.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id && item.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken);
         if (point is null) return NotFound();
-        var comments = await db.CollectionPointComments.AsNoTracking().Where(comment => comment.CollectionPointId == id && !comment.IsHidden).OrderByDescending(comment => comment.CreatedAt).Take(20).ToListAsync(cancellationToken);
+        var comments = await db.CollectionPointComments.AsNoTracking()
+            .Where(comment => comment.CollectionPointId == id && !comment.IsHidden)
+            .OrderByDescending(comment => comment.CreatedAt)
+            .Take(20)
+            .ToListAsync(cancellationToken);
         return Ok(point.ToResponse(comments.Select(comment => comment.ToResponse()).ToList()));
     }
 
@@ -116,7 +122,9 @@ public class CollectionPointsController(
     {
         if (string.IsNullOrWhiteSpace(request.ManagementCode)) return BadRequest("Management code is required.");
         var hash = MissingPersonSecurity.HashManagementCode(request.ManagementCode);
-        var point = await db.CollectionPoints.AsNoTracking().SingleOrDefaultAsync(item => item.ManagementCodeHash == hash && item.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken);
+        var point = await db.CollectionPoints.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ManagementCodeHash == hash &&
+                item.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken);
         if (point is null) return NotFound();
         return Ok(point.ToResponse());
     }
@@ -141,7 +149,8 @@ public class CollectionPointsController(
         if (point is null) return NotFound();
         if (!Authorize(code, point)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid status.");
-        point.OperationalStatus = request.Status; point.UpdatedAt = DateTimeOffset.UtcNow;
+        point.OperationalStatus = request.Status;
+        point.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(point.ToResponse());
     }
@@ -168,7 +177,9 @@ public class CollectionPointsController(
         if (!Authorize(code, point)) return Unauthorized();
         var comment = await db.CollectionPointComments.SingleOrDefaultAsync(item => item.Id == commentId && item.CollectionPointId == id, cancellationToken);
         if (comment is null) return NotFound();
-        comment.IsHidden = true; await db.SaveChangesAsync(cancellationToken); return NoContent();
+        comment.IsHidden = true;
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
@@ -180,64 +191,162 @@ public class CollectionPointsController(
         if (!challenge.Success) return BadRequest("Human verification failed.");
         if (!await db.CollectionPoints.AnyAsync(point => point.Id == id, cancellationToken)) return NotFound();
         db.CollectionPointAbuseReports.Add(new CollectionPointAbuseReport { Id = Guid.NewGuid(), CollectionPointId = id, Reason = request.Reason.Trim(), Details = request.Details?.Trim() });
-        await db.SaveChangesAsync(cancellationToken); return Accepted();
+        await db.SaveChangesAsync(cancellationToken);
+        return Accepted();
     }
 
+
     [HttpGet("moderation/pending")]
-    public async Task<IActionResult> Pending([FromHeader(Name = "X-Moderation-Service-Key")] string? key, [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Pending(
+        [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize,
+        CancellationToken cancellationToken = default)
     {
         if (!Moderated(key) || page < 1 || pageSize is < 1 or > MaxPageSize) return Unauthorized();
-        var points = db.CollectionPoints.AsNoTracking().Where(point => point.ModerationStatus == CollectionPointModerationStatus.Pending).OrderBy(point => point.CreatedAt);
+
+        var points = db.CollectionPoints.AsNoTracking()
+            .Where(point => point.ModerationStatus == CollectionPointModerationStatus.Pending)
+            .OrderBy(point => point.CreatedAt);
         var total = await points.CountAsync(cancellationToken);
         var items = await points.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<CollectionPointSummaryResponse>(items.Select(point => point.ToSummaryResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+
+        return Ok(new PagedResponse<CollectionPointSummaryResponse>(
+            items.Select(point => point.ToSummaryResponse()).ToList(),
+            page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
     }
 
     [HttpPost("moderation/official")]
-    public async Task<IActionResult> CreateOfficial(CreateCollectionPointRequest request, [FromHeader(Name = "X-Moderation-Service-Key")] string? key, [FromHeader(Name = "X-Moderator-Email")] string? moderator, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateOfficial(
+        CreateCollectionPointRequest request,
+        [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
+        [FromHeader(Name = "X-Moderator-Email")] string? moderator,
+        CancellationToken cancellationToken)
     {
         if (!Moderated(key)) return Unauthorized();
-        var error = Validate(request); if (error is not null) return BadRequest(error);
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken); if (earthquake is null) return UnprocessableEntity("No active earthquake is configured.");
+
+        var error = Validate(request);
+        if (error is not null) return BadRequest(error);
+
+        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
+        if (earthquake is null) return UnprocessableEntity("No active earthquake is configured.");
+
         var point = CreateEntity(request, earthquake.Id, CollectionPointSource.Official, CollectionPointModerationStatus.Approved, null);
-        point.ModeratedAt = DateTimeOffset.UtcNow; point.ModeratedBy = moderator?.Trim();
-        db.CollectionPoints.Add(point); await db.SaveChangesAsync(cancellationToken);
+        point.ModeratedAt = DateTimeOffset.UtcNow;
+        point.ModeratedBy = moderator?.Trim();
+        db.CollectionPoints.Add(point);
+        await db.SaveChangesAsync(cancellationToken);
+
         return CreatedAtAction(nameof(Get), new { id = point.Id }, point.ToResponse());
     }
 
     [HttpPatch("moderation/{id:guid}")]
-    public async Task<IActionResult> Moderate(Guid id, UpdateCollectionPointModerationRequest request, [FromHeader(Name = "X-Moderation-Service-Key")] string? key, [FromHeader(Name = "X-Moderator-Email")] string? moderator, CancellationToken cancellationToken)
+    public async Task<IActionResult> Moderate(
+        Guid id,
+        UpdateCollectionPointModerationRequest request,
+        [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
+        [FromHeader(Name = "X-Moderator-Email")] string? moderator,
+        CancellationToken cancellationToken)
     {
         if (!Moderated(key)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid moderation status.");
-        var point = await db.CollectionPoints.SingleOrDefaultAsync(item => item.Id == id, cancellationToken); if (point is null) return NotFound();
-        point.ModerationStatus = request.Status; point.ModeratedAt = DateTimeOffset.UtcNow; point.ModeratedBy = moderator?.Trim(); point.UpdatedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken); return Ok(point.ToResponse());
+
+        var point = await db.CollectionPoints.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
+        if (point is null) return NotFound();
+
+        point.ModerationStatus = request.Status;
+        point.ModeratedAt = DateTimeOffset.UtcNow;
+        point.ModeratedBy = moderator?.Trim();
+        point.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(point.ToResponse());
     }
 
     [HttpPatch("moderation/{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> ModerateComment(Guid id, Guid commentId, [FromHeader(Name = "X-Moderation-Service-Key")] string? key, CancellationToken cancellationToken)
+    public async Task<IActionResult> ModerateComment(
+        Guid id,
+        Guid commentId,
+        [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
+        CancellationToken cancellationToken)
     {
         if (!Moderated(key)) return Unauthorized();
-        var comment = await db.CollectionPointComments.SingleOrDefaultAsync(item => item.Id == commentId && item.CollectionPointId == id, cancellationToken); if (comment is null) return NotFound();
-        comment.IsHidden = true; await db.SaveChangesAsync(cancellationToken); return NoContent();
+
+        var comment = await db.CollectionPointComments
+            .SingleOrDefaultAsync(item => item.Id == commentId && item.CollectionPointId == id, cancellationToken);
+        if (comment is null) return NotFound();
+
+        comment.IsHidden = true;
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
-    private bool Moderated(string? supplied) => !string.IsNullOrWhiteSpace(supplied) &&
-        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(supplied), Encoding.UTF8.GetBytes(configuration["Moderation:ApiKey"] ?? "__missing__"));
-    private static bool Authorize(string? code, CollectionPoint point) => !string.IsNullOrWhiteSpace(code) && point.ManagementCodeHash is not null && MissingPersonSecurity.Matches(code, point.ManagementCodeHash);
-    private static CollectionPoint CreateEntity(CreateCollectionPointRequest request, Guid earthquakeId, CollectionPointSource source, CollectionPointModerationStatus moderation, string? code)
+    private bool Moderated(string? supplied) =>
+        !string.IsNullOrWhiteSpace(supplied) &&
+        CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(supplied),
+            Encoding.UTF8.GetBytes(configuration["Moderation:ApiKey"] ?? "__missing__"));
+
+    private static bool Authorize(string? code, CollectionPoint point) =>
+        !string.IsNullOrWhiteSpace(code) && point.ManagementCodeHash is not null &&
+        MissingPersonSecurity.Matches(code, point.ManagementCodeHash);
+
+    private static CollectionPoint CreateEntity(
+        CreateCollectionPointRequest request,
+        Guid earthquakeId,
+        CollectionPointSource source,
+        CollectionPointModerationStatus moderation,
+        string? code)
     {
-        var point = new CollectionPoint { Id = Guid.NewGuid(), EarthquakeId = earthquakeId, Name = request.Name.Trim(), OrganizationName = request.OrganizationName?.Trim(), Address = request.Address.Trim(), Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude), Description = request.Description?.Trim(), NeedsSummary = request.NeedsSummary.Trim(), ReceivingInstructions = request.ReceivingInstructions.Trim(), ContactName = request.ContactName?.Trim(), ContactPhone = request.ContactPhone?.Trim(), ContactWhatsApp = request.ContactWhatsApp?.Trim(), ContactEmail = request.ContactEmail?.Trim(), EndsAt = request.EndsAt, Source = source, ModerationStatus = moderation, ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code) };
+        var point = new CollectionPoint
+        {
+            Id = Guid.NewGuid(),
+            EarthquakeId = earthquakeId,
+            Name = request.Name.Trim(),
+            OrganizationName = request.OrganizationName?.Trim(),
+            Address = request.Address.Trim(),
+            Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude),
+            Description = request.Description?.Trim(),
+            NeedsSummary = request.NeedsSummary.Trim(),
+            ReceivingInstructions = request.ReceivingInstructions.Trim(),
+            ContactName = request.ContactName?.Trim(),
+            ContactPhone = request.ContactPhone?.Trim(),
+            ContactWhatsApp = request.ContactWhatsApp?.Trim(),
+            ContactEmail = request.ContactEmail?.Trim(),
+            EndsAt = request.EndsAt,
+            Source = source,
+            ModerationStatus = moderation,
+            ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code)
+        };
         point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
         return point;
     }
+
     private static void Apply(CollectionPoint point, UpdateCollectionPointRequest request)
     {
-        point.Name = request.Name.Trim(); point.OrganizationName = request.OrganizationName?.Trim(); point.Address = request.Address.Trim(); point.Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude); point.Description = request.Description?.Trim(); point.NeedsSummary = request.NeedsSummary.Trim(); point.ReceivingInstructions = request.ReceivingInstructions.Trim(); point.ContactName = request.ContactName?.Trim(); point.ContactPhone = request.ContactPhone?.Trim(); point.ContactWhatsApp = request.ContactWhatsApp?.Trim(); point.ContactEmail = request.ContactEmail?.Trim(); point.EndsAt = request.EndsAt; point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary)); point.UpdatedAt = DateTimeOffset.UtcNow;
+        point.Name = request.Name.Trim();
+        point.OrganizationName = request.OrganizationName?.Trim();
+        point.Address = request.Address.Trim();
+        point.Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude);
+        point.Description = request.Description?.Trim();
+        point.NeedsSummary = request.NeedsSummary.Trim();
+        point.ReceivingInstructions = request.ReceivingInstructions.Trim();
+        point.ContactName = request.ContactName?.Trim();
+        point.ContactPhone = request.ContactPhone?.Trim();
+        point.ContactWhatsApp = request.ContactWhatsApp?.Trim();
+        point.ContactEmail = request.ContactEmail?.Trim();
+        point.EndsAt = request.EndsAt;
+        point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
+        point.UpdatedAt = DateTimeOffset.UtcNow;
     }
-    private static string? Validate(CreateCollectionPointRequest request) => !request.PrivacyConsent ? "Privacy consent is required." : ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
-    private static string? Validate(UpdateCollectionPointRequest request) => ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
+
+    private static string? Validate(CreateCollectionPointRequest request) =>
+        !request.PrivacyConsent
+            ? "Privacy consent is required."
+            : ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
+
+    private static string? Validate(UpdateCollectionPointRequest request) =>
+        ValidateCore(request.Name, request.Address, request.NeedsSummary, request.ReceivingInstructions, request.EndsAt);
+
     private static string? ValidateCore(string name, string address, string needs, string instructions, DateTimeOffset? endsAt)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200) return "Name is required.";
@@ -247,5 +356,13 @@ public class CollectionPointsController(
         if (endsAt is not null && endsAt < DateTimeOffset.UtcNow.AddMinutes(-5)) return "End date cannot be in the past.";
         return null;
     }
-    private static string NormalizeSearch(string? value) => string.IsNullOrWhiteSpace(value) ? string.Empty : new(value.Normalize(System.Text.NormalizationForm.FormD).Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && (char.IsLetterOrDigit(character) || char.IsWhiteSpace(character))).Select(char.ToUpperInvariant).ToArray());
+
+    private static string NormalizeSearch(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : new(value.Normalize(System.Text.NormalizationForm.FormD)
+                .Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark &&
+                    (char.IsLetterOrDigit(character) || char.IsWhiteSpace(character)))
+                .Select(char.ToUpperInvariant)
+                .ToArray());
 }

@@ -125,10 +125,28 @@ public static class ResponseMappingExtensions
     public static string GoogleMapsUrl(this HelpRequest request) =>
         GoogleMapsUrl(request.Location, request.Address);
 
-    public static BloodDonationCenterSummaryResponse ToSummaryResponse(this BloodDonationCenter center) => new(center.Id, center.Name, center.OrganizationName, center.Address, center.CenterType, center.BloodTypes, center.Components, center.OperationalStatus, center.ModerationStatus, center.Source, center.StartsAt, center.EndsAt, center.UpdatedAt, center.GoogleMapsUrl(), center.EndsAt is not null && center.EndsAt < DateTimeOffset.UtcNow);
-    public static BloodDonationCenterResponse ToResponse(this BloodDonationCenter center, IReadOnlyList<BloodDonationCenterCommentResponse>? comments = null) => new(center.Id, center.EarthquakeId, center.Name, center.OrganizationName, center.Address, GeoPoint.Latitude(center.Location), GeoPoint.Longitude(center.Location), center.Description, center.OperatingInstructions, center.NeedsSummary, center.PublicPhone, center.PublicWhatsApp, center.PublicEmail, center.CenterType, center.BloodTypes, center.Components, center.OperationalStatus, center.ModerationStatus, center.Source, center.StartsAt, center.EndsAt, center.CreatedAt, center.UpdatedAt, center.GoogleMapsUrl(), center.EndsAt is not null && center.EndsAt < DateTimeOffset.UtcNow, comments ?? []);
-    public static BloodDonationCenterCommentResponse ToResponse(this BloodDonationCenterComment comment) => new(comment.Id, comment.DisplayName, comment.Message, comment.CreatedAt);
-    public static string GoogleMapsUrl(this BloodDonationCenter center) => GoogleMapsUrl(center.Location, center.Address);
+    public static BloodDonationCenterSummaryResponse ToSummaryResponse(this BloodDonationCenter center) => new(
+        center.Id, center.Name, center.OrganizationName, center.Address,
+        center.CenterType, center.BloodTypes, center.Components,
+        center.OperationalStatus, center.ModerationStatus, center.Source,
+        center.StartsAt, center.EndsAt, center.UpdatedAt, center.GoogleMapsUrl(),
+        center.EndsAt is not null && center.EndsAt < DateTimeOffset.UtcNow);
+
+    public static BloodDonationCenterResponse ToResponse(this BloodDonationCenter center, IReadOnlyList<BloodDonationCenterCommentResponse>? comments = null) => new(
+        center.Id, center.EarthquakeId, center.Name, center.OrganizationName, center.Address,
+        GeoPoint.Latitude(center.Location), GeoPoint.Longitude(center.Location),
+        center.Description, center.OperatingInstructions, center.NeedsSummary,
+        center.PublicPhone, center.PublicWhatsApp, center.PublicEmail,
+        center.CenterType, center.BloodTypes, center.Components,
+        center.OperationalStatus, center.ModerationStatus, center.Source,
+        center.StartsAt, center.EndsAt, center.CreatedAt, center.UpdatedAt, center.GoogleMapsUrl(),
+        center.EndsAt is not null && center.EndsAt < DateTimeOffset.UtcNow, comments ?? []);
+
+    public static BloodDonationCenterCommentResponse ToResponse(this BloodDonationCenterComment comment) =>
+        new(comment.Id, comment.DisplayName, comment.Message, comment.CreatedAt);
+
+    public static string GoogleMapsUrl(this BloodDonationCenter center) =>
+        GoogleMapsUrl(center.Location, center.Address);
 
     private static string GoogleMapsUrl(NetTopologySuite.Geometries.Point? location, string address) =>
         location is not null

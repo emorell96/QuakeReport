@@ -2,9 +2,10 @@
   <Project Path="QuakeReport.ApiService/QuakeReport.ApiService.csproj" />
   <Project Path="QuakeReport.AppHost/QuakeReport.AppHost.csproj" />
   <Project Path="QuakeReport.Contracts/QuakeReport.Contracts.csproj" />
+  <Project Path="QuakeReport.Core/QuakeReport.Core.csproj" Id="2da2a13e-7ff8-478e-967c-9efa851e560a" />
   <Project Path="QuakeReport.Data/QuakeReport.Data.csproj" />
-  <Project Path="QuakeReport.Geospatial/QuakeReport.Geospatial.csproj" />
   <Project Path="QuakeReport.GeocodingWorker/QuakeReport.GeocodingWorker.csproj" />
+  <Project Path="QuakeReport.Geospatial/QuakeReport.Geospatial.csproj" />
   <Project Path="QuakeReport.MigrationService/QuakeReport.MigrationService.csproj" />
   <Project Path="QuakeReport.ServiceDefaults/QuakeReport.ServiceDefaults.csproj" />
   <Project Path="QuakeReport.Tests/QuakeReport.Tests.csproj" />

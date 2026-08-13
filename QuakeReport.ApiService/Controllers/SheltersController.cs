@@ -257,11 +257,16 @@ public class SheltersController(
 
     private static void Apply(Shelter shelter, UpdateShelterRequest request)
     {
-        shelter.Name = request.Name.Trim(); shelter.OrganizationName = request.OrganizationName?.Trim();
-        shelter.Address = request.Address.Trim(); shelter.Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude);
-        shelter.Description = request.Description.Trim(); shelter.OperatingInstructions = request.OperatingInstructions.Trim();
-        shelter.ContactName = request.ContactName?.Trim(); shelter.ContactPhone = request.ContactPhone?.Trim();
-        shelter.ContactWhatsApp = request.ContactWhatsApp?.Trim(); shelter.ContactEmail = request.ContactEmail?.Trim();
+        shelter.Name = request.Name.Trim();
+        shelter.OrganizationName = request.OrganizationName?.Trim();
+        shelter.Address = request.Address.Trim();
+        shelter.Location = GeoPoint.FromCoordinates(request.Latitude, request.Longitude);
+        shelter.Description = request.Description.Trim();
+        shelter.OperatingInstructions = request.OperatingInstructions.Trim();
+        shelter.ContactName = request.ContactName?.Trim();
+        shelter.ContactPhone = request.ContactPhone?.Trim();
+        shelter.ContactWhatsApp = request.ContactWhatsApp?.Trim();
+        shelter.ContactEmail = request.ContactEmail?.Trim();
         shelter.SearchText = NormalizeSearch(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
         shelter.UpdatedAt = DateTimeOffset.UtcNow;
     }

@@ -6,16 +6,35 @@ namespace QuakeReport.Web.Models;
 
 public sealed class DamageReportForm : IPrivacyConsentForm, IFormWithLocation
 {
-    public string Description { get; set; } = string.Empty;
-    public SeverityLevel Severity { get; set; } = SeverityLevel.Moderate;
-    public DamageSign DamageSigns { get; set; }
-    public StructureType? StructureType { get; set; }
-    public StructureSize? StructureSize { get; set; }
-    public string? Address { get; set; }
-    public double? Latitude { get; set; }
-    public double? Longitude { get; set; }
-    public bool PrivacyConsent { get; set; }
-    public List<IBrowserFile> MediaFiles { get; } = [];
+    public string Description { get;
+        set;
+        } = string.Empty;
+    public SeverityLevel Severity { get;
+        set;
+        } = SeverityLevel.Moderate;
+    public DamageSign DamageSigns { get;
+        set;
+        }
+    public StructureType? StructureType { get;
+        set;
+        }
+    public StructureSize? StructureSize { get;
+        set;
+        }
+    public string? Address { get;
+        set;
+        }
+    public double? Latitude { get;
+        set;
+        }
+    public double? Longitude { get;
+        set;
+        }
+    public bool PrivacyConsent { get;
+        set;
+        }
+    public List<IBrowserFile> MediaFiles { get;
+        } = [];
 }
 
 public sealed class DamageReportFormValidator : MudFormValidator<DamageReportForm>
@@ -29,7 +48,8 @@ public sealed class DamageReportFormValidator : MudFormValidator<DamageReportFor
 
     public DamageReportFormValidator()
     {
-        this.AddPrivacyConsentRules(); this.AddLocationRules(300, addressRequired: false, coordinatesRequired: true);
+        this.AddPrivacyConsentRules();
+        this.AddLocationRules(300, addressRequired: false, coordinatesRequired: true);
         RuleFor(x => x.Description).NotEmpty().WithMessage("La descripción es obligatoria.").MaximumLength(2000).WithMessage("La descripción no puede superar 2000 caracteres.");
         RuleFor(x => x.Severity).IsInEnum().WithMessage("Selecciona una gravedad válida.");
         RuleFor(x => x.DamageSigns).Must(value => (value & ~AllDamageSigns) == 0).WithMessage("La selección de daños no es válida.");

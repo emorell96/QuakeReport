@@ -69,7 +69,13 @@ public sealed class IngestionController(
         var externalDuplicate = source.ExternalPostId is null ? null : await db.IngestionSubmissions.SingleOrDefaultAsync(
             item => item.EntityType == entityType && item.Platform == source.Platform && item.ExternalPostId == source.ExternalPostId, cancellationToken);
         if (externalDuplicate is not null)
-            return Conflict(new IngestionSubmissionResponse(externalDuplicate.Id, externalDuplicate.EntityId, externalDuplicate.EntityType, "Pending", true, PublicPath(externalDuplicate.EntityType, externalDuplicate.EntityId)));
+            return Conflict(new IngestionSubmissionResponse(
+                externalDuplicate.Id,
+                externalDuplicate.EntityId,
+                externalDuplicate.EntityType,
+                "Pending",
+                true,
+                PublicPath(externalDuplicate.EntityType, externalDuplicate.EntityId)));
 
         var submission = new IngestionSubmission
         {
@@ -109,7 +115,9 @@ public sealed class IngestionController(
         if (!ValidCoordinates(data.Latitude, data.Longitude)) return (id, "Coordinates must be supplied together and be valid.");
         if (string.IsNullOrWhiteSpace(data.PublicPhone) || data.PublicPhone.Length > 80) return (id, "Public phone is required.");
         if (!Enum.IsDefined(data.CenterType) || data.BloodTypes == 0 || data.Components == 0) return (id, "Invalid blood donation data.");
-        if (data.CenterType == BloodDonationCenterType.TemporaryCampaign && (data.StartsAt is null || data.EndsAt is null || data.EndsAt < data.StartsAt)) return (id, "Temporary campaigns require valid dates.");
+        if (data.CenterType == BloodDonationCenterType.TemporaryCampaign &&
+            (data.StartsAt is null || data.EndsAt is null || data.EndsAt < data.StartsAt))
+            return (id, "Temporary campaigns require valid dates.");
         var center = new BloodDonationCenter
         {
             Id = id, EarthquakeId = earthquakeId, Name = data.Name.Trim(), OrganizationName = Trim(data.OrganizationName), Address = data.Address.Trim(),
@@ -181,7 +189,14 @@ public sealed class IngestionController(
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static bool ValidCoordinates(double? latitude, double? longitude) => latitude is null && longitude is null || latitude is >= -90 and <= 90 && longitude is >= -180 and <= 180;
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static string Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? string.Empty : new(value.Normalize(NormalizationForm.FormD).Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark && (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c))).Select(char.ToUpperInvariant).ToArray());
+    private static string Normalize(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : new(value.Normalize(NormalizationForm.FormD)
+                .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark &&
+                    (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)))
+                .Select(char.ToUpperInvariant)
+                .ToArray());
     private static string PublicPath(IngestionEntityType type, Guid id) => type switch
     {
         IngestionEntityType.CollectionPoint => $"/collection-points/{id}",
