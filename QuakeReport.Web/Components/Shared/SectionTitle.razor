@@ -3,6 +3,10 @@
           AlignItems="@AlignItems"
           Class="@($"mb-4 responsive-row {Class}".Trim())">
     <MudText Typo="@Typo">@Title</MudText>
+    @if(Subtitle != null && Subtitle != string.Empty)
+    {
+        <MudText Typo="Typo.h6">@Subtitle</MudText>
+    }
     @if (Actions is not null)
     {
         <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions">
@@ -11,8 +15,9 @@
     }
 </MudStack>
 
-@code {
+    @code {
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
     [Parameter] public Typo Typo { get; set; } = Typo.h4;
     [Parameter] public string? Class { get; set; }

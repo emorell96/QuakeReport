@@ -59,17 +59,6 @@
 
     private void ShowLocationFailure(GeolocationResult.Failure failure)
     {
-        var message = failure.Reason switch
-        {
-            GeolocationFailureReason.Denied =>
-                "Necesitamos permiso para acceder a tu ubicación.",
-            GeolocationFailureReason.Timeout =>
-                "No pudimos obtener tu ubicación a tiempo. Inténtalo de nuevo.",
-            GeolocationFailureReason.Unsupported =>
-                "Tu navegador no admite servicios de ubicación.",
-            _ => "Tu ubicación no está disponible en este momento.",
-        };
-
-        Snackbar.Add(message, Severity.Warning);
+        Snackbar.Add(GeolocationMessages.For(failure.Reason), Severity.Warning);
     }
 }
