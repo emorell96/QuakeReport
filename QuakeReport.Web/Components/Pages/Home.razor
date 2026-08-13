@@ -18,174 +18,157 @@
     </MudPaper>
 }
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
-    <MudText Typo="Typo.h6">Solicitudes de ayuda</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions"><MudButton Href="/ayuda/nueva" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">Publicar solicitud</MudButton><MudButton Href="/ayuda" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Sos">Ver todas</MudButton></MudStack>
-</MudStack>
-@if (_helpRequests.Count == 0)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-6">No hay solicitudes de ayuda activas publicadas.</MudAlert>
-}
-else
-{
-    <MudGrid Class="mb-6" Spacing="2">
-        @foreach (var request in _helpRequests)
-        {
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Class="h-100">
-                    <MudCardContent>
-                        <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center"><MudText Typo="Typo.h6">@request.Title</MudText><MudChip T="string" Color="@HelpPriorityColor(request.Priority)" Size="Size.Small">@request.Priority</MudChip></MudStack>
-                        @if (request.ModerationStatus == HelpRequestModerationStatus.Pending)
-                        {
-                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>
-                        }
-                        <MudText Typo="Typo.body2">@request.RequesterName · @request.Address</MudText><MudText Class="mt-2">@request.NeedDetails</MudText>
-                        <MudButton Href="@($"/ayuda/{request.Id}")" Size="Size.Small" Class="mt-2">Ver detalles</MudButton>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        }
-    </MudGrid>
-}
+<HomeCardSection TItem="HelpRequestSummaryResponse"
+                 Title="Solicitudes de ayuda"
+                 TitleTypo="Typo.h6"
+                 Items="_helpRequests"
+                 Loading="_loading"
+                 EmptyText="No hay solicitudes de ayuda activas publicadas.">
+    <HeaderActions>
+        <MudButton Href="/ayuda/nueva" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">Publicar solicitud</MudButton>
+        <MudButton Href="/ayuda" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Sos">Ver todas</MudButton>
+    </HeaderActions>
+    <ItemTemplate Context="request">
+        <MudCard Class="h-100">
+            <MudCardContent>
+                <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center">
+                    <MudText Typo="Typo.h6">@request.Title</MudText>
+                    <MudChip T="string" Color="@HelpPriorityColor(request.Priority)" Size="Size.Small">@request.Priority</MudChip>
+                </MudStack>
+                @if (request.ModerationStatus == HelpRequestModerationStatus.Pending)
+                {
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>
+                }
+                <MudText Typo="Typo.body2">@request.RequesterName Â· @request.Address</MudText>
+                <MudText Class="mt-2">@request.NeedDetails</MudText>
+                <MudButton Href="@($"/ayuda/{request.Id}")" Size="Size.Small" Class="mt-2">Ver detalles</MudButton>
+            </MudCardContent>
+        </MudCard>
+    </ItemTemplate>
+</HomeCardSection>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
-    <MudText Typo="Typo.h4">Donación de sangre</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions">
+<HomeCardSection TItem="BloodDonationCenterSummaryResponse"
+                 Title="Donación de sangre"
+                 Items="_bloodDonationCenters"
+                 Loading="_loading"
+                 EmptyText="No hay centros de donación de sangre abiertos publicados.">
+    <HeaderActions>
         <MudButton Href="/donacion-sangre/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Bloodtype">Registrar centro de donación de sangre</MudButton>
         <MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton>
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MyLocation" Disabled="@(_findingNearest is not null)" OnClick="@(() => FindNearestAsync(NearestKind.BloodDonationCenter))">Encontrar el más cercano</MudButton>
-    </MudStack>
-</MudStack>
-@if (_bloodDonationCenters.Count == 0)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-6">No hay centros de donación de sangre abiertos publicados.</MudAlert>
-}
-else
-{
-
-    <MudGrid Class="mb-6" Spacing="2">
-        @foreach(var center in _bloodDonationCenters)
-        {
-            <MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@center.Name</MudText>
-                @if(center.ModerationStatus==BloodDonationModerationStatus.Pending)
+    </HeaderActions>
+    <ItemTemplate Context="center">
+        <MudCard Class="h-100">
+            <MudCardContent>
+                <MudText Typo="Typo.h6">@center.Name</MudText>
+                @if (center.ModerationStatus == BloodDonationModerationStatus.Pending)
                 {
-                <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>
+                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>
                 }
-            <MudText Typo="Typo.body2">@center.Address</MudText><MudText Typo="Typo.body2">@BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText><MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton></MudCardContent></MudCard>
-                </MudItem>
-        }
-        <MudItem xs="12" sm="6" md="4">
-            <MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton>
-        </MudItem>
-</MudGrid>
-}
+                <MudText Typo="Typo.body2">@center.Address</MudText>
+                <MudText Typo="Typo.body2">@BloodDonationDisplay.BloodTypes(center.BloodTypes)</MudText>
+                <MudButton Href="@($"/donacion-sangre/{center.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+            </MudCardContent>
+        </MudCard>
+    </ItemTemplate>
+    <FooterActions>
+        <MudButton Href="/donacion-sangre" Variant="Variant.Outlined">Ver todos</MudButton>
+    </FooterActions>
+</HomeCardSection>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
-    <MudText Typo="Typo.h4">Refugios</MudText>
-	<MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions">
+<HomeCardSection TItem="ShelterSummaryResponse"
+                 Title="Refugios"
+                 Items="_shelters"
+                 Loading="_loading"
+                 EmptyText="No hay refugios abiertos publicados.">
+    <HeaderActions>
         <MudButton Href="/refugios/nuevo" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.HomeWork">Registrar refugio</MudButton>
         <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MyLocation" Disabled="@(_findingNearest is not null)" OnClick="@(() => FindNearestAsync(NearestKind.Shelter))">Encontrar el más cercano</MudButton>
-    </MudStack>
-</MudStack>
-@if (_shelters.Count == 0)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-6">No hay refugios abiertos publicados.</MudAlert>
-}
-else
-{
-    <MudGrid Class="mb-6">
-        @foreach (var shelter in _shelters)
-        {
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Class="h-100">
-                    <MudCardContent>
-                        <MudStack Row="true"><MudText Typo="Typo.h6">@shelter.Name</MudText>@if (shelter.ModerationStatus == ShelterModerationStatus.Pending) {
-                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>
-                        }
-                    </MudStack>
-                    <MudText>@shelter.Address</MudText><MudText Typo="Typo.body2">@shelter.Description</MudText><MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
-                </MudCardContent>
-            </MudCard>
-        </MudItem>
-    }
-    <MudItem>
+    </HeaderActions>
+    <ItemTemplate Context="shelter">
+        <MudCard Class="h-100">
+            <MudCardContent>
+                <MudStack Row="true">
+                    <MudText Typo="Typo.h6">@shelter.Name</MudText>
+                    @if (shelter.ModerationStatus == ShelterModerationStatus.Pending)
+                    {
+                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">No verificado</MudChip>
+                    }
+                </MudStack>
+                <MudText>@shelter.Address</MudText>
+                <MudText Typo="Typo.body2">@shelter.Description</MudText>
+                <MudButton Href="@($"/refugios/{shelter.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+            </MudCardContent>
+        </MudCard>
+    </ItemTemplate>
+    <FooterActions>
         <MudButton Href="/refugios" Variant="Variant.Outlined">Ver todos</MudButton>
-    </MudItem>
-</MudGrid>
-}
+    </FooterActions>
+</HomeCardSection>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
-    <MudText Typo="Typo.h4">Personas extraviadas</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions">
+<HomeCardSection TItem="MissingPersonSummaryResponse"
+                 Title="Personas extraviadas"
+                 Items="_missingPeople"
+                 Loading="_loading"
+                 EmptyText="No hay personas extraviadas registradas.">
+    <HeaderActions>
         <MudButton Href="/missing-people/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd">Registrar persona</MudButton>
         <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
-    </MudStack>
-</MudStack>
+    </HeaderActions>
+    <ItemTemplate Context="person">
+        <MudCard Class="h-100" @onclick="() => NavigateToMissingPerson(person.Id)" Style="cursor:pointer">
+            @if (!string.IsNullOrWhiteSpace(person.PhotoUrl))
+            {
+                <MudCardMedia Image="@person.PhotoUrl" Height="180" />
+            }
+            <MudCardContent>
+                <MudText Typo="Typo.h6">@person.FullName</MudText>
+                @if (person.IdentificationLastFour is not null)
+                {
+                    <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText>
+                }
+                <MudText Typo="Typo.body2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
+                <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
+                <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
+            </MudCardContent>
+        </MudCard>
+    </ItemTemplate>
+    <FooterActions>
+        <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
+    </FooterActions>
+</HomeCardSection>
 
-@if (_missingPeople.Count == 0)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-6">No hay personas extraviadas registradas.</MudAlert>
-}
-else
-{
-    <MudGrid Class="mb-6" Spacing="2">
-        @foreach (var person in _missingPeople)
-        {
-            <MudItem xs="12" sm="6" md="4">
-                <MudCard Class="h-100" @onclick="() => NavigateToMissingPerson(person.Id)" Style="cursor:pointer">
-                    @if (!string.IsNullOrWhiteSpace(person.PhotoUrl))
-                    {
-                        <MudCardMedia Image="@person.PhotoUrl" Height="180" />
-                    }
-                    <MudCardContent>
-                        <MudText Typo="Typo.h6">@person.FullName</MudText>
-                        @if (person.IdentificationLastFour is not null)
-                        {
-                            <MudText Typo="Typo.body2">Documento terminado en @person.IdentificationLastFour</MudText>
-                        }
-                        <MudText Typo="Typo.body2">Último avistamiento: @person.LastSeenAt.ToLocalTime().ToString("g")</MudText>
-                        <MudText Typo="Typo.body2">@(person.PrimaryAddress ?? "Ubicación no especificada")</MudText>
-                        <MudButton Href="/missing-people/manage" @onclick:stopPropagation="true" Size="Size.Small" Class="mt-2">Editar con código</MudButton>
-                    </MudCardContent>
-                </MudCard>
-            </MudItem>
-        }
-        <MudItem>
-            <MudButton Href="/missing-people" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.PersonSearch">Ver todas</MudButton>
-        </MudItem>
-    </MudGrid>
-}
-
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
-    <MudText Typo="Typo.h4">Centros de acopio</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions">
+<HomeCardSection TItem="CollectionPointSummaryResponse"
+                 Title="Centros de acopio"
+                 Items="_collectionPoints"
+                 Loading="_loading"
+                 EmptyText="No hay centros de acopio abiertos publicados.">
+    <HeaderActions>
         <MudButton Href="/collection-points/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.VolunteerActivism">Registrar centro</MudButton>
-
         <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.MyLocation" Disabled="@(_findingNearest is not null)" OnClick="@(() => FindNearestAsync(NearestKind.CollectionPoint))">Encontrar el más cercano</MudButton>
-    </MudStack>
-</MudStack>
-@if (_collectionPoints.Count == 0)
-{
-    <MudAlert Severity="Severity.Info" Class="mb-6">No hay centros de acopio abiertos publicados.</MudAlert>
-}
-else
-{
-    <MudGrid Class="mb-6">
-        @foreach (var point in _collectionPoints)
-        {
-            <MudItem xs="12" sm="6" md="4"><MudCard Class="h-100"><MudCardContent><MudText Typo="Typo.h6">@point.Name</MudText><MudText>@point.Address</MudText><MudText Typo="Typo.body2"><strong>Necesidades:</strong> @point.NeedsSummary</MudText><MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton></MudCardContent></MudCard></MudItem>
-        }
-        <MudItem><MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton></MudItem>
-    </MudGrid>
-}
+    </HeaderActions>
+    <ItemTemplate Context="point">
+        <MudCard Class="h-100">
+            <MudCardContent>
+                <MudText Typo="Typo.h6">@point.Name</MudText>
+                <MudText>@point.Address</MudText>
+                <MudText Typo="Typo.body2"><strong>Necesidades:</strong> @point.NeedsSummary</MudText>
+                <MudButton Href="@($"/collection-points/{point.Id}")" Size="Size.Small" Class="mt-2">Detalles</MudButton>
+            </MudCardContent>
+        </MudCard>
+    </ItemTemplate>
+    <FooterActions>
+        <MudButton Href="/collection-points" Variant="Variant.Outlined">Ver todos</MudButton>
+    </FooterActions>
+</HomeCardSection>
 
-<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4 responsive-row">
-    <MudText Typo="Typo.h4">Reportes de Daños</MudText>
-    <MudStack Row="true" Wrap="Wrap.Wrap" Class="responsive-actions">
+<SectionTitle Title="Reportes de Daños">
+    <Actions>
         <MudButton Href="/report/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddAlert">Reportar daño</MudButton>
-        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Actualizar</MudButton></MudStack>
-</MudStack>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync">Actualizar</MudButton>
+    </Actions>
+</SectionTitle>
 
 <MudPaper Class="pa-4 mb-4" Elevation="1">
     <MudGrid Spacing="2">
@@ -292,12 +275,7 @@ else
         try
         {
             var earthquakeTask = ApiClient.GetActiveEarthquakeAsync(cancellation.Token);
-            var reportsTask = ApiClient.GetReportsAsync(
-                _page,
-                PageSize,
-                _severityFilter,
-                _sortOption,
-                cancellation.Token);
+            var reportsTask = ApiClient.GetReportsAsync(_page, PageSize, _severityFilter, _sortOption, cancellation.Token);
             var missingPeopleTask = ApiClient.GetMissingPeopleAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var collectionPointsTask = ApiClient.GetCollectionPointsAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
             var sheltersTask = ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, page: 1, pageSize: 6, cancellationToken: cancellation.Token);

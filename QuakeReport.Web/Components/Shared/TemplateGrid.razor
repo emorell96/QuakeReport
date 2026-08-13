@@ -1,0 +1,48 @@
+@typeparam TItem
+
+@if (Loading)
+{
+    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+}
+else if (!Items.Any())
+{
+    @if (EmptyContent is not null)
+    {
+        @EmptyContent
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Class="@($"mb-6 {Class}".Trim())">@EmptyText</MudAlert>
+    }
+}
+else
+{
+    <MudGrid Class="@($"mb-6 {Class}".Trim())" Spacing="@Spacing">
+        @foreach (var item in Items)
+        {
+            <MudItem xs="@ItemXs" sm="@ItemSm" md="@ItemMd">
+                @ItemTemplate(item)
+            </MudItem>
+        }
+        @if (ActionTemplate is not null)
+        {
+            <MudItem xs="@ItemXs" sm="@ItemSm" md="@ItemMd">
+                @ActionTemplate
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = [];
+    [Parameter, EditorRequired] public RenderFragment<TItem> ItemTemplate { get; set; } = default!;
+    [Parameter] public RenderFragment? ActionTemplate { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "No hay elementos para mostrar.";
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public int Spacing { get; set; } = 2;
+    [Parameter] public int ItemXs { get; set; } = 12;
+    [Parameter] public int ItemSm { get; set; } = 6;
+    [Parameter] public int ItemMd { get; set; } = 4;
+}
