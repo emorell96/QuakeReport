@@ -8,6 +8,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
 
 namespace QuakeReport.Tests;
 
@@ -40,13 +41,13 @@ public class ReportsControllerTests
         var result = await controller.GetAll(cancellationToken: CancellationToken.None);
 
         var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-        var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
         CollectionAssert.AreEqual(
             new[] { newestMajor.Id, oldestMajor.Id, catastrophic.Id },
-            response.Items.Select(report => report.Id).ToArray());
-        Assert.AreEqual(1, response.Page);
+            response.Results.Select(report => report.Id).ToArray());
+        Assert.AreEqual(1, response.PageNumber);
         Assert.AreEqual(20, response.PageSize);
-        Assert.AreEqual(3, response.TotalCount);
+        Assert.AreEqual(3, response.TotalMatches);
         Assert.AreEqual(1, response.TotalPages);
         Assert.IsNull(typeof(DamageReportSummaryResponse).GetProperty("Media"));
     }
@@ -60,9 +61,9 @@ public class ReportsControllerTests
         var result = await controller.GetAll(cancellationToken: CancellationToken.None);
 
         var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-        var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
-        Assert.AreEqual(0, response.Items.Count);
-        Assert.AreEqual(0, response.TotalCount);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
+        Assert.AreEqual(0, response.Results.Count);
+        Assert.AreEqual(0, response.TotalMatches);
         Assert.AreEqual(0, response.TotalPages);
     }
 
@@ -80,17 +81,17 @@ public class ReportsControllerTests
         var controller = CreateController(db);
 
         var firstResult = await controller.GetAll(cancellationToken: CancellationToken.None);
-        var firstPage = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var firstPage = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(firstResult).Value);
         var secondResult = await controller.GetAll(page: 2, cancellationToken: CancellationToken.None);
-        var secondPage = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var secondPage = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(secondResult).Value);
 
-        Assert.AreEqual(20, firstPage.Items.Count);
-        Assert.AreEqual(21, firstPage.TotalCount);
+        Assert.AreEqual(20, firstPage.Results.Count);
+        Assert.AreEqual(21, firstPage.TotalMatches);
         Assert.AreEqual(2, firstPage.TotalPages);
-        Assert.AreEqual(1, secondPage.Items.Count);
-        Assert.AreEqual(reports[0].Id, secondPage.Items[0].Id);
+        Assert.AreEqual(1, secondPage.Results.Count);
+        Assert.AreEqual(reports[0].Id, secondPage.Results.Single().Id);
     }
 
     [TestMethod]
@@ -112,13 +113,13 @@ public class ReportsControllerTests
             cancellationToken: CancellationToken.None);
 
         var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-        var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
-        Assert.AreEqual(2, response.Page);
+        var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
+        Assert.AreEqual(2, response.PageNumber);
         Assert.AreEqual(1, response.PageSize);
-        Assert.AreEqual(2, response.TotalCount);
+        Assert.AreEqual(2, response.TotalMatches);
         Assert.AreEqual(2, response.TotalPages);
-        Assert.AreEqual(1, response.Items.Count);
-        Assert.AreEqual(oldestMajor.Id, response.Items[0].Id);
+        Assert.AreEqual(1, response.Results.Count);
+        Assert.AreEqual(oldestMajor.Id, response.Results.Single().Id);
     }
 
     [TestMethod]
@@ -145,8 +146,8 @@ public class ReportsControllerTests
         {
             var result = await controller.GetAll(sort: sort, cancellationToken: CancellationToken.None);
             var ok = TestAssert.InstanceOf<OkObjectResult>(result);
-            var response = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(ok.Value);
-            CollectionAssert.AreEqual(expectedIds, response.Items.Select(report => report.Id).ToArray(), sort.ToString());
+            var response = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(ok.Value);
+            CollectionAssert.AreEqual(expectedIds, response.Results.Select(report => report.Id).ToArray(), sort.ToString());
         }
     }
 
@@ -164,14 +165,14 @@ public class ReportsControllerTests
         var controller = CreateController(db);
 
         var newestResult = await controller.GetAll(sort: ReportSortOption.Newest, cancellationToken: CancellationToken.None);
-        var newest = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var newest = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(newestResult).Value);
         var oldestResult = await controller.GetAll(sort: ReportSortOption.Oldest, cancellationToken: CancellationToken.None);
-        var oldest = TestAssert.InstanceOf<PagedResponse<DamageReportSummaryResponse>>(
+        var oldest = TestAssert.InstanceOf<PagedResult<DamageReportSummaryResponse>>(
             TestAssert.InstanceOf<OkObjectResult>(oldestResult).Value);
 
-        CollectionAssert.AreEqual(new[] { higherId.Id, lowerId.Id }, newest.Items.Select(report => report.Id).ToArray());
-        CollectionAssert.AreEqual(new[] { lowerId.Id, higherId.Id }, oldest.Items.Select(report => report.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { higherId.Id, lowerId.Id }, newest.Results.Select(report => report.Id).ToArray());
+        CollectionAssert.AreEqual(new[] { lowerId.Id, higherId.Id }, oldest.Results.Select(report => report.Id).ToArray());
     }
 
     [TestMethod]
@@ -433,7 +434,7 @@ public class ReportsControllerTests
     }
 
     private static ReportsController CreateController(QuakeReport.Data.QuakeReportDbContext db, RecordingMediaStorage? storage = null) =>
-        new(db, new ActiveEarthquakeService(db), storage ?? new RecordingMediaStorage());
+        new(db, new ActiveEarthquakeService(db), storage ?? new RecordingMediaStorage(), TestRepository.Create<DamageReport>(db));
 
     private static CreateDamageReportRequest CreateRequest(
         StructureType? structureType = null,

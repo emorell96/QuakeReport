@@ -95,7 +95,7 @@ else
         var cts = new CancellationTokenSource();
         var previous = Interlocked.Exchange(ref _loadCancellation, cts);
         previous?.Cancel(); previous?.Dispose(); _loading = true;
-        try { var response = await ApiClient.GetMissingPeopleAsync(_query, _status, _sort, _page, 20, cts.Token); if (ReferenceEquals(_loadCancellation, cts)) { _items = response.Items; _totalPages = response.TotalPages; } }
+        try { var response = await ApiClient.GetMissingPeopleAsync(_query, _status, _sort, _page, 20, cts.Token); if (ReferenceEquals(_loadCancellation, cts)) { _items = response.Results.ToList(); _totalPages = response.TotalPages; } }
         catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
         finally { if (ReferenceEquals(_loadCancellation, cts)) _loading = false; }
     }

@@ -66,7 +66,7 @@ else
     private async Task LoadAsync()
     {
         var cts = new CancellationTokenSource(); var previous = Interlocked.Exchange(ref _cts, cts); previous?.Cancel(); previous?.Dispose();
-        try { var response = await ApiClient.GetCollectionPointsAsync(_query, _status, _moderationStatus, _sort, _page, 20, cts.Token); if (ReferenceEquals(_cts, cts)) { _items = response.Items; _totalPages = response.TotalPages; } }
+        try { var response = await ApiClient.GetCollectionPointsAsync(_query, _status, _moderationStatus, _sort, _page, 20, cts.Token); if (ReferenceEquals(_cts, cts)) { _items = response.Results.ToList(); _totalPages = response.TotalPages; } }
         catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
     }
     private static string GetStatus(CollectionPointOperationalStatus status) => status switch { CollectionPointOperationalStatus.Open => "Abierto", CollectionPointOperationalStatus.Full => "Capacidad llena", CollectionPointOperationalStatus.Closed => "Cerrado", _ => status.ToString() };

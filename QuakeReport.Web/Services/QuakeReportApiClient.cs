@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.WebUtilities;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using StorageGenerics.Core.Models;
 
 namespace QuakeReport.Web.Services;
 
@@ -39,7 +40,7 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<PagedResponse<BloodDonationCenterSummaryResponse>> GetBloodDonationCentersAsync(
+    public async Task<PagedResult<BloodDonationCenterSummaryResponse>> GetBloodDonationCentersAsync(
         string? query = null,
         BloodDonationCenterType? centerType = null,
         BloodDonationOperationalStatus? operationalStatus = null,
@@ -69,8 +70,8 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         if (longitude is not null) p["longitude"] = longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         var uri = QueryHelpers.AddQueryString("/api/blood-donation-centers", p);
-        return await httpClient.GetFromJsonAsync<PagedResponse<BloodDonationCenterSummaryResponse>>(uri, cancellationToken)
-            ?? new([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<BloodDonationCenterSummaryResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<BloodDonationCenterResponse?> GetBloodDonationCenterAsync(Guid id, CancellationToken cancellationToken = default)
@@ -141,13 +142,13 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await r.Content.ReadFromJsonAsync<BloodDonationCenterCommentResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResponse<BloodDonationCenterSummaryResponse>> GetPendingBloodDonationCentersAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<BloodDonationCenterSummaryResponse>> GetPendingBloodDonationCentersAsync(int page = 1, CancellationToken cancellationToken = default)
     {
         using var m = new HttpRequestMessage(HttpMethod.Get, $"/api/blood-donation-centers/moderation/pending?page={page}&pageSize=20");
         m.Headers.Add("X-Moderation-Service-Key", ModerationKey);
         var r = await httpClient.SendAsync(m, cancellationToken);
         r.EnsureSuccessStatusCode();
-        return (await r.Content.ReadFromJsonAsync<PagedResponse<BloodDonationCenterSummaryResponse>>(cancellationToken))!;
+        return (await r.Content.ReadFromJsonAsync<PagedResult<BloodDonationCenterSummaryResponse>>(cancellationToken))!;
     }
 
     public async Task<BloodDonationCenterResponse> ModerateBloodDonationCenterAsync(
@@ -198,7 +199,7 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await r.Content.ReadFromJsonAsync<BloodDonationCenterResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResponse<HelpRequestSummaryResponse>> GetHelpRequestsAsync(
+    public async Task<PagedResult<HelpRequestSummaryResponse>> GetHelpRequestsAsync(
         string? query = null,
         HelpRequestPriority? priority = null,
         HelpNeedCategory? category = null,
@@ -216,7 +217,8 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         if (status is not null) parameters["status"] = status.ToString();
         if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
         var uri = QueryHelpers.AddQueryString("/api/help-requests", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResponse<HelpRequestSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<HelpRequestSummaryResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<HelpRequestResponse?> GetHelpRequestAsync(Guid id, CancellationToken cancellationToken = default)
@@ -275,13 +277,13 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<PagedResponse<HelpRequestSummaryResponse>> GetPendingHelpRequestsAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<HelpRequestSummaryResponse>> GetPendingHelpRequestsAsync(int page = 1, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/help-requests/moderation/pending?page={page}&pageSize=20");
         request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
         var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<PagedResponse<HelpRequestSummaryResponse>>(cancellationToken))!;
+        return (await response.Content.ReadFromJsonAsync<PagedResult<HelpRequestSummaryResponse>>(cancellationToken))!;
     }
 
     public async Task<HelpRequestResponse> ModerateHelpRequestAsync(Guid id, HelpRequestModerationStatus status, string? email = null, CancellationToken cancellationToken = default)
@@ -322,7 +324,7 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResponse<ShelterSummaryResponse>> GetSheltersAsync(
+    public async Task<PagedResult<ShelterSummaryResponse>> GetSheltersAsync(
         string? query = null,
         ShelterOperationalStatus? operationalStatus = null,
         ShelterModerationStatus? moderationStatus = null,
@@ -340,7 +342,8 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         if (latitude is not null) parameters["latitude"] = latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (longitude is not null) parameters["longitude"] = longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var uri = QueryHelpers.AddQueryString("/api/shelters", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResponse<ShelterSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<ShelterSummaryResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<ShelterResponse?> GetShelterAsync(Guid id, CancellationToken cancellationToken = default)
@@ -384,13 +387,13 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResponse<ShelterSummaryResponse>> GetPendingSheltersAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<ShelterSummaryResponse>> GetPendingSheltersAsync(int page = 1, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/shelters/moderation/pending?page={page}&pageSize=20");
         request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
         var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<PagedResponse<ShelterSummaryResponse>>(cancellationToken))!;
+        return (await response.Content.ReadFromJsonAsync<PagedResult<ShelterSummaryResponse>>(cancellationToken))!;
     }
 
     public async Task<ShelterResponse> ModerateShelterAsync(Guid id, ShelterModerationStatus status, string? email = null, CancellationToken cancellationToken = default)
@@ -431,7 +434,7 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResponse<CollectionPointSummaryResponse>> GetCollectionPointsAsync(
+    public async Task<PagedResult<CollectionPointSummaryResponse>> GetCollectionPointsAsync(
         string? query = null,
         CollectionPointOperationalStatus? operationalStatus = null,
         CollectionPointModerationStatus? moderationStatus = null,
@@ -449,7 +452,8 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         if (latitude is not null) parameters["latitude"] = latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (longitude is not null) parameters["longitude"] = longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
         var uri = QueryHelpers.AddQueryString("/api/collection-points", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResponse<CollectionPointSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<CollectionPointSummaryResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<CollectionPointResponse?> GetCollectionPointAsync(Guid id, CancellationToken cancellationToken = default)
@@ -508,13 +512,13 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<PagedResponse<CollectionPointSummaryResponse>> GetPendingCollectionPointsAsync(int page = 1, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<CollectionPointSummaryResponse>> GetPendingCollectionPointsAsync(int page = 1, CancellationToken cancellationToken = default)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/collection-points/moderation/pending?page={page}&pageSize=20");
         request.Headers.Add("X-Moderation-Service-Key", ModerationKey);
         var response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return (await response.Content.ReadFromJsonAsync<PagedResponse<CollectionPointSummaryResponse>>(cancellationToken))!;
+        return (await response.Content.ReadFromJsonAsync<PagedResult<CollectionPointSummaryResponse>>(cancellationToken))!;
     }
 
     public async Task<CollectionPointResponse> ModerateCollectionPointAsync(Guid id, CollectionPointModerationStatus status, string? email = null, CancellationToken cancellationToken = default)
@@ -536,7 +540,7 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken))!;
     }
-    public async Task<PagedResponse<MissingPersonSummaryResponse>> GetMissingPeopleAsync(
+    public async Task<PagedResult<MissingPersonSummaryResponse>> GetMissingPeopleAsync(
         string? query = null,
         MissingPersonStatus status = MissingPersonStatus.Missing,
         MissingPersonSortOption sort = MissingPersonSortOption.Newest,
@@ -553,7 +557,8 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         };
         if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
         var uri = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/api/missing-people", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResponse<MissingPersonSummaryResponse>>(uri, cancellationToken) ?? new([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<MissingPersonSummaryResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<MissingPersonResponse?> GetMissingPersonAsync(Guid id, CancellationToken cancellationToken = default)
@@ -594,14 +599,14 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await response.Content.ReadFromJsonAsync<MissingPersonTipResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResponse<MissingPersonTipResponse>> GetMissingPersonTipsAsync(Guid id, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<MissingPersonTipResponse>> GetMissingPersonTipsAsync(Guid id, int page = 1, int pageSize = 20, CancellationToken cancellationToken = default)
     {
         var uri = QueryHelpers.AddQueryString($"/api/missing-people/{id}/tips", new Dictionary<string, string?>
         {
             [nameof(page)] = page.ToString(), [nameof(pageSize)] = pageSize.ToString()
         });
-        return await httpClient.GetFromJsonAsync<PagedResponse<MissingPersonTipResponse>>(uri, cancellationToken)
-            ?? new([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<MissingPersonTipResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<string> UploadMissingPersonPhotoAsync(Guid id, string managementCode, IBrowserFile file, CancellationToken cancellationToken = default)
@@ -665,7 +670,7 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return await response.Content.ReadFromJsonAsync<EarthquakeResponse>(cancellationToken);
     }
 
-    public async Task<PagedResponse<DamageReportSummaryResponse>> GetReportsAsync(
+    public async Task<PagedResult<DamageReportSummaryResponse>> GetReportsAsync(
         int page = 1,
         int pageSize = 20,
         SeverityLevel? severity = null,
@@ -685,8 +690,8 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         }
 
         var uri = QueryHelpers.AddQueryString("/api/reports", query);
-        return await httpClient.GetFromJsonAsync<PagedResponse<DamageReportSummaryResponse>>(uri, cancellationToken)
-            ?? new PagedResponse<DamageReportSummaryResponse>([], page, pageSize, 0, 0);
+        return await httpClient.GetFromJsonAsync<PagedResult<DamageReportSummaryResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     public async Task<DamageReportResponse?> GetReportAsync(Guid id, CancellationToken cancellationToken = default)

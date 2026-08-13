@@ -8,6 +8,7 @@ using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using StorageGenerics.Core.Models;
 
 namespace QuakeReport.Tests;
 
@@ -42,10 +43,10 @@ public class MissingPeopleControllerTests
         await db.SaveChangesAsync();
 
         var result = await CreateController(db).List(page: 1, pageSize: 1, cancellationToken: CancellationToken.None);
-        var page = TestAssert.InstanceOf<PagedResponse<MissingPersonSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
+        var page = TestAssert.InstanceOf<PagedResult<MissingPersonSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
 
-        Assert.AreEqual(1, page.TotalCount);
-        Assert.AreEqual("Missing one", page.Items.Single().FullName);
+        Assert.AreEqual(1, page.TotalMatches);
+        Assert.AreEqual("Missing one", page.Results.Single().FullName);
     }
 
     [TestMethod]
@@ -74,12 +75,13 @@ public class MissingPeopleControllerTests
         Assert.IsNull(typeof(MissingPersonTipResponse).GetProperty("ResponderEmail"));
         var hidden = await controller.HideTip(create.Person.Id, tip.Id, create.ManagementCode, CancellationToken.None);
         Assert.IsInstanceOfType(hidden, typeof(NoContentResult));
-        var publicTips = TestAssert.InstanceOf<PagedResponse<MissingPersonTipResponse>>(TestAssert.InstanceOf<OkObjectResult>(await controller.Tips(create.Person.Id, cancellationToken: CancellationToken.None)).Value);
-        Assert.AreEqual(0, publicTips.TotalCount);
+        var publicTips = TestAssert.InstanceOf<PagedResult<MissingPersonTipResponse>>(TestAssert.InstanceOf<OkObjectResult>(await controller.Tips(create.Person.Id, cancellationToken: CancellationToken.None)).Value);
+        Assert.AreEqual(0, publicTips.TotalMatches);
     }
 
     private static MissingPeopleController CreateController(QuakeReportDbContext db) =>
-        new(db, new ActiveEarthquakeService(db), new MissingPersonSecurity(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MissingPeople:IdHmacKey"] = "test-secret" }).Build()), new AlwaysTurnstile(), new NoopPhotoStorage());
+        new(db, new ActiveEarthquakeService(db), new MissingPersonSecurity(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MissingPeople:IdHmacKey"] = "test-secret" }).Build()), new AlwaysTurnstile(), new NoopPhotoStorage(),
+            TestRepository.Create<MissingPerson>(db), TestRepository.Create<MissingPersonTip>(db));
 
     private static CreateMissingPersonRequest Request(string name, string? document) =>
         new(name, null, "30", document is null ? null : IdentificationDocumentType.ColombianCitizenId, document, "Descripción", null, null, DateTimeOffset.UtcNow.AddHours(-1), [new("Bogotá", null, null, null)], true, "token");

@@ -1,7 +1,6 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuakeReport.ApiService.Security;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
@@ -15,7 +14,7 @@ namespace QuakeReport.ApiService.Controllers;
 public sealed class GeocodingReviewController(
     QuakeReportDbContext db,
     GeocodingCoordinator coordinator,
-    IConfiguration configuration) : ControllerBase
+    IModerationKeyValidator moderationKey) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List(
@@ -23,7 +22,7 @@ public sealed class GeocodingReviewController(
         [FromQuery] GeocodingReviewStatus? status = null,
         CancellationToken cancellationToken = default)
     {
-        if (!Authorized(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         var query = db.GeocodingReviewItems.AsNoTracking();
         if (status is not null) query = query.Where(item => item.Status == status);
         var items = await query.OrderByDescending(item => item.LastAttemptAt).Take(500).ToListAsync(cancellationToken);
@@ -35,7 +34,7 @@ public sealed class GeocodingReviewController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Authorized(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         return await coordinator.RetryAsync(id, cancellationToken) ? NoContent() : NotFound();
     }
 
@@ -44,7 +43,7 @@ public sealed class GeocodingReviewController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Authorized(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         if (!GeoPoint.IsValid(request.Latitude, request.Longitude)) return BadRequest("Coordenadas inválidas.");
         var review = await db.GeocodingReviewItems.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (review is null) return NotFound();
@@ -61,19 +60,12 @@ public sealed class GeocodingReviewController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Authorized(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         var review = await db.GeocodingReviewItems.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (review is null) return NotFound();
         Complete(review, GeocodingReviewStatus.Dismissed, request.ResolvedBy);
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
-    }
-
-    private bool Authorized(string? supplied)
-    {
-        var expected = configuration["Moderation:ApiKey"] ?? "__missing__";
-        return !string.IsNullOrWhiteSpace(supplied) && CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(supplied), Encoding.UTF8.GetBytes(expected));
     }
 
     private static void Complete(Data.Models.GeocodingReviewItem item, GeocodingReviewStatus status, string? resolvedBy)

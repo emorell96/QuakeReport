@@ -2,6 +2,8 @@ using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Ingestion;
+using QuakeReport.ApiService.Security;
+using QuakeReport.ApiService.Persistence;
 using QuakeReport.Data;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.Geospatial;
@@ -9,6 +11,9 @@ using QuakeReport.Data.Geospatial;
 using Scalar.AspNetCore;
 using System.Security.Cryptography;
 using System.Text;
+using QuakeReport.Data.Models;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Services;
 
 PostGisTypeMapping.Configure();
 var builder = WebApplication.CreateBuilder(args);
@@ -49,6 +54,17 @@ builder.Services.AddOpenApi();
 
 builder.AddAzureNpgsqlDbContext<QuakeReportDbContext>("quakereportdb",
     configureDbContextOptions: options => options.UseNpgsql(npgsql => npgsql.UseNetTopologySuite()));
+builder.Services.AddSingleton<IDbContextFactory<QuakeReportDbContext>, RuntimeQuakeReportDbContextFactory>();
+AddQueryableRepository<BloodDonationCenter>(builder.Services);
+AddQueryableRepository<BloodDonationCenterComment>(builder.Services);
+AddQueryableRepository<CollectionPoint>(builder.Services);
+AddQueryableRepository<CollectionPointComment>(builder.Services);
+AddQueryableRepository<DamageReport>(builder.Services);
+AddQueryableRepository<HelpRequest>(builder.Services);
+AddQueryableRepository<HelpRequestComment>(builder.Services);
+AddQueryableRepository<MissingPerson>(builder.Services);
+AddQueryableRepository<MissingPersonTip>(builder.Services);
+AddQueryableRepository<Shelter>(builder.Services);
 builder.AddAzureBlobServiceClient("blobs");
 builder.Services.AddHttpClient("turnstile", client =>
 {
@@ -62,6 +78,7 @@ builder.Services.AddScoped<MissingPersonSecurity>();
 builder.Services.AddScoped<ITurnstileValidator, TurnstileValidator>();
 builder.Services.AddScoped<IMissingPersonPhotoStorage, MissingPersonPhotoStorage>();
 builder.Services.AddSingleton<IIngestionApiKeyValidator, IngestionApiKeyValidator>();
+builder.Services.AddSingleton<IModerationKeyValidator, ModerationKeyValidator>();
 builder.Services.AddHttpClient<IGoogleGeocoder, GoogleGeocoder>(client => client.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddScoped<GeocodingCoordinator>();
 
@@ -83,3 +100,10 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+static void AddQueryableRepository<TEntity>(IServiceCollection services)
+    where TEntity : class, IEntity<Guid>
+{
+    services.AddScoped<IQueryableRepositoryService<TEntity, Guid>,
+        QueryableRepositoryService<QuakeReportDbContext, TEntity, Guid>>();
+}

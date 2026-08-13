@@ -1,16 +1,18 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Security;
+using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -20,21 +22,20 @@ public class CollectionPointsController(
     QuakeReportDbContext db,
     ActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IConfiguration configuration) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IQueryableRepositoryService<CollectionPoint, Guid> pointsRepository,
+    IQueryableRepositoryService<CollectionPointComment, Guid> commentsRepository) : ControllerBase
 {
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
-
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] string? query = null,
         [FromQuery] CollectionPointOperationalStatus? operationalStatus = null,
         [FromQuery] CollectionPointModerationStatus? moderationStatus = null,
         [FromQuery] CollectionPointSortOption sort = CollectionPointSortOption.Newest,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default,
         [FromQuery] double? latitude = null, [FromQuery] double? longitude = null)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize || !Enum.IsDefined(sort) ||
+        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             (latitude.HasValue != longitude.HasValue) ||
@@ -42,38 +43,34 @@ public class CollectionPointsController(
             return BadRequest("Invalid collection-point query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return Ok(new PagedResponse<CollectionPointSummaryResponse>([], page, pageSize, 0, 0));
-
-        var points = db.CollectionPoints.AsNoTracking().Where(point => point.EarthquakeId == earthquake.Id && point.ModerationStatus != CollectionPointModerationStatus.Rejected);
+        Guid? earthquakeId = earthquake?.Id;
+        var points = pointsRepository.QueryAll().AsNoTracking().Where(point => point.EarthquakeId == earthquakeId && point.ModerationStatus != CollectionPointModerationStatus.Rejected);
         if (moderationStatus is not null) points = points.Where(point => point.ModerationStatus == moderationStatus);
         if (operationalStatus is not null) points = points.Where(point => point.OperationalStatus == operationalStatus);
         else points = points.Where(point => point.OperationalStatus != CollectionPointOperationalStatus.Closed);
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var normalized = NormalizeSearch(query);
+            var normalized = SearchTextNormalizer.Normalize(query);
             points = points.Where(point => point.SearchText!.Contains(normalized));
         }
 
         if (latitude.HasValue)
         {
             var candidates = points.Where(point => point.Location != null);
-            var count = await candidates.CountAsync(cancellationToken);
-            var nearest = await candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
-                .ThenBy(point => point.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-            return Ok(new PagedResponse<CollectionPointSummaryResponse>(
-                nearest.Select(point => point.ToSummaryResponse()).ToList(),
-                page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
+            var nearest = candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
+                .ThenBy(point => point.Id);
+            var nearestProjected = nearest.SelectOrdered(point => point.ToSummaryResponse());
+            return Ok(await nearestProjected.ToPagedResultAsync(page, pageSize, cancellationToken));
         }
 
-        var total = await points.CountAsync(cancellationToken);
         var ordered = sort switch
         {
             CollectionPointSortOption.RecentlyUpdated => points.OrderByDescending(point => point.UpdatedAt).ThenByDescending(point => point.Id),
             CollectionPointSortOption.Name => points.OrderBy(point => point.Name).ThenBy(point => point.Id),
             _ => points.OrderByDescending(point => point.CreatedAt).ThenByDescending(point => point.Id),
         };
-        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<CollectionPointSummaryResponse>(items.Select(point => point.ToSummaryResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        var projected = ordered.SelectOrdered(point => point.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]
@@ -90,14 +87,14 @@ public class CollectionPointsController(
     }
 
     [HttpGet("{id:guid}/comments")]
-    public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize) return BadRequest("Invalid pagination.");
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
         if (!await db.CollectionPoints.AnyAsync(point => point.Id == id && point.ModerationStatus != CollectionPointModerationStatus.Rejected, cancellationToken)) return NotFound();
-        var comments = db.CollectionPointComments.AsNoTracking().Where(comment => comment.CollectionPointId == id && !comment.IsHidden);
-        var total = await comments.CountAsync(cancellationToken);
-        var items = await comments.OrderByDescending(comment => comment.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<CollectionPointCommentResponse>(items.Select(comment => comment.ToResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        var comments = commentsRepository.QueryAll().AsNoTracking().Where(comment => comment.CollectionPointId == id && !comment.IsHidden);
+        var ordered = comments.OrderByDescending(comment => comment.CreatedAt).ThenByDescending(comment => comment.Id);
+        var projected = ordered.SelectOrdered(comment => comment.ToResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost]
@@ -200,20 +197,18 @@ public class CollectionPointsController(
     public async Task<IActionResult> Pending(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!Moderated(key) || page < 1 || pageSize is < 1 or > MaxPageSize) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
 
-        var points = db.CollectionPoints.AsNoTracking()
+        var points = pointsRepository.QueryAll().AsNoTracking()
             .Where(point => point.ModerationStatus == CollectionPointModerationStatus.Pending)
-            .OrderBy(point => point.CreatedAt);
-        var total = await points.CountAsync(cancellationToken);
-        var items = await points.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-
-        return Ok(new PagedResponse<CollectionPointSummaryResponse>(
-            items.Select(point => point.ToSummaryResponse()).ToList(),
-            page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+            .OrderBy(point => point.CreatedAt)
+            .ThenBy(point => point.Id);
+        var projected = points.SelectOrdered(point => point.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost("moderation/official")]
@@ -223,7 +218,7 @@ public class CollectionPointsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var error = Validate(request);
         if (error is not null) return BadRequest(error);
@@ -248,7 +243,7 @@ public class CollectionPointsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid moderation status.");
 
         var point = await db.CollectionPoints.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -269,7 +264,7 @@ public class CollectionPointsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var comment = await db.CollectionPointComments
             .SingleOrDefaultAsync(item => item.Id == commentId && item.CollectionPointId == id, cancellationToken);
@@ -279,12 +274,6 @@ public class CollectionPointsController(
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
-
-    private bool Moderated(string? supplied) =>
-        !string.IsNullOrWhiteSpace(supplied) &&
-        CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(supplied),
-            Encoding.UTF8.GetBytes(configuration["Moderation:ApiKey"] ?? "__missing__"));
 
     private static bool Authorize(string? code, CollectionPoint point) =>
         !string.IsNullOrWhiteSpace(code) && point.ManagementCodeHash is not null &&
@@ -317,7 +306,7 @@ public class CollectionPointsController(
             ModerationStatus = moderation,
             ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code)
         };
-        point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
+        point.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
         return point;
     }
 
@@ -335,7 +324,7 @@ public class CollectionPointsController(
         point.ContactWhatsApp = request.ContactWhatsApp?.Trim();
         point.ContactEmail = request.ContactEmail?.Trim();
         point.EndsAt = request.EndsAt;
-        point.SearchText = NormalizeSearch(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
+        point.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
         point.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -357,12 +346,4 @@ public class CollectionPointsController(
         return null;
     }
 
-    private static string NormalizeSearch(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : new(value.Normalize(System.Text.NormalizationForm.FormD)
-                .Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark &&
-                    (char.IsLetterOrDigit(character) || char.IsWhiteSpace(character)))
-                .Select(char.ToUpperInvariant)
-                .ToArray());
 }

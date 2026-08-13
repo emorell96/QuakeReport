@@ -1,16 +1,18 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Security;
+using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -20,10 +22,10 @@ public class HelpRequestsController(
     QuakeReportDbContext db,
     ActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IConfiguration configuration) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IQueryableRepositoryService<HelpRequest, Guid> requestsRepository,
+    IQueryableRepositoryService<HelpRequestComment, Guid> commentsRepository) : ControllerBase
 {
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
     private const HelpNeedCategory AllCategories = HelpNeedCategory.Personnel | HelpNeedCategory.Medical |
         HelpNeedCategory.RescueEquipment | HelpNeedCategory.Machinery | HelpNeedCategory.Transportation |
         HelpNeedCategory.FoodAndWater | HelpNeedCategory.Communications | HelpNeedCategory.TemporaryShelter |
@@ -34,9 +36,9 @@ public class HelpRequestsController(
         [FromQuery] HelpRequestPriority? priority = null, [FromQuery] HelpNeedCategory? category = null,
         [FromQuery] HelpRequestStatus? status = null, [FromQuery] HelpRequestModerationStatus? moderationStatus = null,
         [FromQuery] HelpRequestSortOption sort = HelpRequestSortOption.HighestPriority,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize, CancellationToken cancellationToken = default)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize || !Enum.IsDefined(sort) ||
+        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
             (priority is not null && !Enum.IsDefined(priority.Value)) ||
             (status is not null && !Enum.IsDefined(status.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
@@ -44,10 +46,9 @@ public class HelpRequestsController(
             return BadRequest("Invalid help-request query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return Ok(new PagedResponse<HelpRequestSummaryResponse>([], page, pageSize, 0, 0));
-
-        var requests = db.HelpRequests.AsNoTracking().Where(request =>
-            request.EarthquakeId == earthquake.Id && request.ModerationStatus != HelpRequestModerationStatus.Rejected);
+        Guid? earthquakeId = earthquake?.Id;
+        var requests = requestsRepository.QueryAll().AsNoTracking().Where(request =>
+            request.EarthquakeId == earthquakeId && request.ModerationStatus != HelpRequestModerationStatus.Rejected);
         if (status is null) requests = requests.Where(request => request.Status != HelpRequestStatus.Resolved);
         else requests = requests.Where(request => request.Status == status);
         if (priority is not null) requests = requests.Where(request => request.Priority == priority);
@@ -55,11 +56,10 @@ public class HelpRequestsController(
         if (moderationStatus is not null) requests = requests.Where(request => request.ModerationStatus == moderationStatus);
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var normalized = NormalizeSearch(query);
+            var normalized = SearchTextNormalizer.Normalize(query);
             requests = requests.Where(request => request.SearchText!.Contains(normalized));
         }
 
-        var total = await requests.CountAsync(cancellationToken);
         var ordered = sort switch
         {
             HelpRequestSortOption.Newest => requests.OrderByDescending(request => request.CreatedAt).ThenByDescending(request => request.Id),
@@ -71,8 +71,8 @@ public class HelpRequestsController(
                 .ThenBy(request => request.Id),
             _ => requests.OrderByDescending(request => request.Priority).ThenByDescending(request => request.CreatedAt).ThenByDescending(request => request.Id),
         };
-        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<HelpRequestSummaryResponse>(items.Select(request => request.ToSummaryResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        var projected = ordered.SelectOrdered(request => request.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]
@@ -89,15 +89,15 @@ public class HelpRequestsController(
     }
 
     [HttpGet("{id:guid}/comments")]
-    public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize) return BadRequest("Invalid pagination.");
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
         var request = await db.HelpRequests.AsNoTracking().SingleOrDefaultAsync(item => item.Id == id && item.ModerationStatus != HelpRequestModerationStatus.Rejected, cancellationToken);
         if (request is null) return NotFound();
-        var comments = db.HelpRequestComments.AsNoTracking().Where(comment => comment.HelpRequestId == id && !comment.IsHidden);
-        var total = await comments.CountAsync(cancellationToken);
-        var items = await comments.OrderByDescending(comment => comment.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<HelpRequestCommentResponse>(items.Select(comment => comment.ToResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        var comments = commentsRepository.QueryAll().AsNoTracking().Where(comment => comment.HelpRequestId == id && !comment.IsHidden);
+        var ordered = comments.OrderByDescending(comment => comment.CreatedAt).ThenByDescending(comment => comment.Id);
+        var projected = ordered.SelectOrdered(comment => comment.ToResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost]
@@ -201,25 +201,19 @@ public class HelpRequestsController(
     public async Task<IActionResult> Pending(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!Moderated(key)) return Unauthorized();
-        if (page < 1 || pageSize is < 1 or > MaxPageSize) return BadRequest("Invalid pagination.");
+        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
 
-        var requests = db.HelpRequests.AsNoTracking()
+        var requests = requestsRepository.QueryAll().AsNoTracking()
             .Where(item => item.ModerationStatus == HelpRequestModerationStatus.Pending);
-        var total = await requests.CountAsync(cancellationToken);
-        var items = await requests
+        var ordered = requests
             .OrderBy(item => item.CreatedAt)
-            .ThenBy(item => item.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
-
-        return Ok(new PagedResponse<HelpRequestSummaryResponse>(
-            items.Select(item => item.ToSummaryResponse()).ToList(),
-            page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+            .ThenBy(item => item.Id);
+        var projected = ordered.SelectOrdered(item => item.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost("moderation/official")]
@@ -229,7 +223,7 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var error = Validate(request);
         if (error is not null) return BadRequest(error);
@@ -253,7 +247,7 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var error = Validate(request);
         if (error is not null) return BadRequest(error);
@@ -274,7 +268,7 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key) || !Enum.IsDefined(request.Status)) return Unauthorized();
+        if (!moderationKey.IsValid(key) || !Enum.IsDefined(request.Status)) return Unauthorized();
 
         var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (helpRequest is null) return NotFound();
@@ -294,7 +288,7 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key) || !Enum.IsDefined(request.Status)) return Unauthorized();
+        if (!moderationKey.IsValid(key) || !Enum.IsDefined(request.Status)) return Unauthorized();
 
         var helpRequest = await db.HelpRequests.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (helpRequest is null) return NotFound();
@@ -312,7 +306,7 @@ public class HelpRequestsController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var comment = await db.HelpRequestComments
             .SingleOrDefaultAsync(item => item.Id == commentId && item.HelpRequestId == id, cancellationToken);
@@ -322,11 +316,6 @@ public class HelpRequestsController(
         await db.SaveChangesAsync(cancellationToken);
         return NoContent();
     }
-
-    private bool Moderated(string? supplied) =>
-        !string.IsNullOrWhiteSpace(supplied) && CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(supplied),
-            Encoding.UTF8.GetBytes(configuration["Moderation:ApiKey"] ?? "__missing__"));
 
     private static bool Authorize(string? code, HelpRequest request) =>
         !string.IsNullOrWhiteSpace(code) && request.ManagementCodeHash is not null &&
@@ -363,7 +352,7 @@ public class HelpRequestsController(
             ModerationStatus = moderation,
             ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code)
         };
-        item.SearchText = NormalizeSearch(string.Join(' ', item.Title, item.RequesterName, item.OrganizationName, item.Address, item.NeedDetails, item.Instructions));
+        item.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', item.Title, item.RequesterName, item.OrganizationName, item.Address, item.NeedDetails, item.Instructions));
         return item;
     }
 
@@ -382,7 +371,7 @@ public class HelpRequestsController(
         item.Priority = request.Priority;
         item.NeedCategories = request.NeedCategories;
         item.NeededBy = request.NeededBy;
-        item.SearchText = NormalizeSearch(string.Join(' ', item.Title, item.RequesterName, item.OrganizationName, item.Address, item.NeedDetails, item.Instructions));
+        item.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', item.Title, item.RequesterName, item.OrganizationName, item.Address, item.NeedDetails, item.Instructions));
         item.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -414,12 +403,4 @@ public class HelpRequestsController(
         return null;
     }
 
-    private static string NormalizeSearch(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : new(value.Normalize(NormalizationForm.FormD)
-                .Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark &&
-                    (char.IsLetterOrDigit(character) || char.IsWhiteSpace(character)))
-                .Select(char.ToUpperInvariant)
-                .ToArray());
 }

@@ -3,10 +3,12 @@ using Microsoft.Extensions.Configuration;
 using QuakeReport.ApiService.Controllers;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Security;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
+using StorageGenerics.Core.Models;
 using QuakeReport.Data.Geospatial;
 
 namespace QuakeReport.Tests;
@@ -43,10 +45,10 @@ public class CollectionPointsControllerTests
         await db.SaveChangesAsync();
 
         var result = await Controller(db).List(page: 1, pageSize: 1, cancellationToken: CancellationToken.None);
-        var page = TestAssert.InstanceOf<PagedResponse<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
+        var page = TestAssert.InstanceOf<PagedResult<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
 
-        Assert.AreEqual(1, page.TotalCount);
-        Assert.AreEqual("Pendiente", page.Items.Single().Name);
+        Assert.AreEqual(1, page.TotalMatches);
+        Assert.AreEqual("Pendiente", page.Results.Single().Name);
     }
 
     [TestMethod]
@@ -81,11 +83,11 @@ public class CollectionPointsControllerTests
         db.CollectionPoints.AddRange(coordinates, address);
         await db.SaveChangesAsync();
 
-        var coordinatePage = TestAssert.InstanceOf<PagedResponse<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(await Controller(db).List(query: "Coordenadas", cancellationToken: CancellationToken.None)).Value);
-        var coordinateResponse = coordinatePage.Items.Single();
+        var coordinatePage = TestAssert.InstanceOf<PagedResult<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(await Controller(db).List(query: "Coordenadas", cancellationToken: CancellationToken.None)).Value);
+        var coordinateResponse = coordinatePage.Results.Single();
         Assert.AreEqual("https://www.google.com/maps/search/?api=1&query=3.4516,-76.532", coordinateResponse.GoogleMapsUrl);
-        var addressPage = TestAssert.InstanceOf<PagedResponse<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(await Controller(db).List(query: "Direcci", cancellationToken: CancellationToken.None)).Value);
-        var addressResponse = addressPage.Items.Single();
+        var addressPage = TestAssert.InstanceOf<PagedResult<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(await Controller(db).List(query: "Direcci", cancellationToken: CancellationToken.None)).Value);
+        var addressResponse = addressPage.Results.Single();
         StringAssert.Contains(addressResponse.GoogleMapsUrl, "google.com/maps/search/?api=1&query=");
     }
 
@@ -103,17 +105,19 @@ public class CollectionPointsControllerTests
         await db.SaveChangesAsync();
 
         var result = await Controller(db).List(pageSize: 1, cancellationToken: CancellationToken.None, latitude: 3.45, longitude: -76.53);
-        var page = TestAssert.InstanceOf<PagedResponse<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
+        var page = TestAssert.InstanceOf<PagedResult<CollectionPointSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
 
-        Assert.AreEqual(2, page.TotalCount);
-        Assert.AreEqual("Cerca", page.Items.Single().Name);
+        Assert.AreEqual(2, page.TotalMatches);
+        Assert.AreEqual("Cerca", page.Results.Single().Name);
     }
 
     private static CollectionPointsController Controller(QuakeReportDbContext db) => new(
         db,
         new ActiveEarthquakeService(db),
         new AlwaysTurnstile(),
-        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build());
+        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()),
+        TestRepository.Create<CollectionPoint>(db),
+        TestRepository.Create<CollectionPointComment>(db));
 
     private static CreateCollectionPointRequest Request(string name) => new(name, null, "Calle 1, Cali", null, null, null, "Agua y alimentos", "Recibir de 8 a 5", null, null, null, null, null, true, "ok");
 

@@ -3,11 +3,15 @@ using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
+using QuakeReport.ApiService.Pagination;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Core.Models;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -16,19 +20,18 @@ namespace QuakeReport.ApiService.Controllers;
 public class ReportsController(
     QuakeReportDbContext dbContext,
     ActiveEarthquakeService activeEarthquakeService,
-    IMediaStorage mediaStorage) : ControllerBase
+    IMediaStorage mediaStorage,
+    IQueryableRepositoryService<DamageReport, Guid> reportsRepository) : ControllerBase
 {
     private const long MaxMediaSizeBytes = 50 * 1024 * 1024; // 50 MB
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
 
     /// <summary>Returns a filtered, sorted page of report summaries.</summary>
     [HttpGet]
-    [ProducesResponseType<PagedResponse<DamageReportSummaryResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<PagedResult<DamageReportSummaryResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GetAll(
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         [FromQuery] SeverityLevel? severity = null,
         [FromQuery] ReportSortOption sort = ReportSortOption.Newest,
         CancellationToken cancellationToken = default)
@@ -38,9 +41,9 @@ public class ReportsController(
             ModelState.AddModelError(nameof(page), "Page must be at least 1.");
         }
 
-        if (pageSize is < 1 or > MaxPageSize)
+        if (pageSize is < 1 or > PaginationParameters.MaxPageSize)
         {
-            ModelState.AddModelError(nameof(pageSize), $"Page size must be between 1 and {MaxPageSize}.");
+            ModelState.AddModelError(nameof(pageSize), $"Page size must be between 1 and {PaginationParameters.MaxPageSize}.");
         }
 
         if (severity.HasValue && !Enum.IsDefined(severity.Value))
@@ -62,13 +65,12 @@ public class ReportsController(
             });
         }
 
-        var query = dbContext.DamageReports.AsNoTracking();
+        var query = reportsRepository.QueryAll().AsNoTracking();
         if (severity.HasValue)
         {
             query = query.Where(report => report.Severity == severity.Value);
         }
 
-        var totalCount = await query.CountAsync(cancellationToken);
         var orderedQuery = sort switch
         {
             ReportSortOption.Oldest => query
@@ -87,19 +89,8 @@ public class ReportsController(
                 .ThenByDescending(report => report.Id),
         };
 
-        var reports = await orderedQuery
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
-
-        var response = new PagedResponse<DamageReportSummaryResponse>(
-            reports.Select(report => report.ToSummaryResponse()).ToList(),
-            page,
-            pageSize,
-            totalCount,
-            (int)Math.Ceiling(totalCount / (double)pageSize));
-
-        return Ok(response);
+        var projected = orderedQuery.SelectOrdered(report => report.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]

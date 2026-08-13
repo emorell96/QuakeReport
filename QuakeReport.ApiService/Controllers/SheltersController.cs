@@ -1,16 +1,18 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Security;
+using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -20,10 +22,9 @@ public class SheltersController(
     QuakeReportDbContext db,
     ActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IConfiguration configuration) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IQueryableRepositoryService<Shelter, Guid> sheltersRepository) : ControllerBase
 {
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
 
     [HttpGet]
     public async Task<IActionResult> List(
@@ -32,12 +33,12 @@ public class SheltersController(
         [FromQuery] ShelterModerationStatus? moderationStatus = null,
         [FromQuery] ShelterSortOption sort = ShelterSortOption.Newest,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default,
         [FromQuery] double? latitude = null,
         [FromQuery] double? longitude = null)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize || !Enum.IsDefined(sort) ||
+        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
             (latitude.HasValue != longitude.HasValue) ||
@@ -45,38 +46,35 @@ public class SheltersController(
             return BadRequest("Invalid shelter query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null)
-            return Ok(new PagedResponse<ShelterSummaryResponse>([], page, pageSize, 0, 0));
-
-        var shelters = db.Shelters.AsNoTracking().Where(shelter =>
-            shelter.EarthquakeId == earthquake.Id && shelter.ModerationStatus != ShelterModerationStatus.Rejected);
+        Guid? earthquakeId = earthquake?.Id;
+        var shelters = sheltersRepository.QueryAll().AsNoTracking().Where(shelter =>
+            shelter.EarthquakeId == earthquakeId && shelter.ModerationStatus != ShelterModerationStatus.Rejected);
         if (operationalStatus is not null) shelters = shelters.Where(shelter => shelter.OperationalStatus == operationalStatus);
         else shelters = shelters.Where(shelter => shelter.OperationalStatus != ShelterOperationalStatus.Closed);
         if (moderationStatus is not null) shelters = shelters.Where(shelter => shelter.ModerationStatus == moderationStatus);
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var normalized = NormalizeSearch(query);
+            var normalized = SearchTextNormalizer.Normalize(query);
             shelters = shelters.Where(shelter => shelter.SearchText!.Contains(normalized));
         }
 
         if (latitude.HasValue)
         {
             var candidates = shelters.Where(shelter => shelter.Location != null);
-            var count = await candidates.CountAsync(cancellationToken);
-            var nearest = await candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
-                .ThenBy(shelter => shelter.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-            return Ok(new PagedResponse<ShelterSummaryResponse>(nearest.Select(shelter => shelter.ToSummaryResponse()).ToList(), page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
+            var nearest = candidates.OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
+                .ThenBy(shelter => shelter.Id);
+            var nearestProjected = nearest.SelectOrdered(shelter => shelter.ToSummaryResponse());
+            return Ok(await nearestProjected.ToPagedResultAsync(page, pageSize, cancellationToken));
         }
 
-        var total = await shelters.CountAsync(cancellationToken);
         var ordered = sort switch
         {
             ShelterSortOption.RecentlyUpdated => shelters.OrderByDescending(shelter => shelter.UpdatedAt).ThenByDescending(shelter => shelter.Id),
             ShelterSortOption.Name => shelters.OrderBy(shelter => shelter.Name).ThenBy(shelter => shelter.Id),
             _ => shelters.OrderByDescending(shelter => shelter.CreatedAt).ThenByDescending(shelter => shelter.Id),
         };
-        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<ShelterSummaryResponse>(items.Select(shelter => shelter.ToSummaryResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        var projected = ordered.SelectOrdered(shelter => shelter.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]
@@ -158,15 +156,14 @@ public class SheltersController(
 
     [HttpGet("moderation/pending")]
     public async Task<IActionResult> Pending([FromHeader(Name = "X-Moderation-Service-Key")] string? key,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize, CancellationToken cancellationToken = default)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (!Moderated(key)) return Unauthorized();
-        if (page < 1 || pageSize is < 1 or > MaxPageSize) return BadRequest("Invalid pagination.");
-        var shelters = db.Shelters.AsNoTracking().Where(shelter => shelter.ModerationStatus == ShelterModerationStatus.Pending);
-        var total = await shelters.CountAsync(cancellationToken);
-        var items = await shelters.OrderBy(shelter => shelter.CreatedAt).ThenBy(shelter => shelter.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<ShelterSummaryResponse>(items.Select(shelter => shelter.ToSummaryResponse()).ToList(), page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
+        var shelters = sheltersRepository.QueryAll().AsNoTracking().Where(shelter => shelter.ModerationStatus == ShelterModerationStatus.Pending);
+        var ordered = shelters.OrderBy(shelter => shelter.CreatedAt).ThenBy(shelter => shelter.Id);
+        var projected = ordered.SelectOrdered(shelter => shelter.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost("moderation/official")]
@@ -175,7 +172,7 @@ public class SheltersController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         var validation = Validate(request);
         if (validation is not null) return BadRequest(validation);
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
@@ -192,7 +189,7 @@ public class SheltersController(
     public async Task<IActionResult> ModeratorUpdate(Guid id, UpdateShelterRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key, CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         var validation = Validate(request);
         if (validation is not null) return BadRequest(validation);
         var shelter = await db.Shelters.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
@@ -208,7 +205,7 @@ public class SheltersController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid moderation status.");
         var shelter = await db.Shelters.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (shelter is null) return NotFound();
@@ -224,7 +221,7 @@ public class SheltersController(
     public async Task<IActionResult> ModeratorStatus(Guid id, UpdateShelterStatusRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key, CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest("Invalid status.");
         var shelter = await db.Shelters.SingleOrDefaultAsync(item => item.Id == id, cancellationToken);
         if (shelter is null) return NotFound();
@@ -233,9 +230,6 @@ public class SheltersController(
         await db.SaveChangesAsync(cancellationToken);
         return Ok(shelter.ToResponse());
     }
-
-    private bool Moderated(string? supplied) => !string.IsNullOrWhiteSpace(supplied) &&
-        CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(supplied), Encoding.UTF8.GetBytes(configuration["Moderation:ApiKey"] ?? "__missing__"));
 
     private static bool Authorize(string? code, Shelter shelter) =>
         !string.IsNullOrWhiteSpace(code) && shelter.ManagementCodeHash is not null && MissingPersonSecurity.Matches(code, shelter.ManagementCodeHash);
@@ -251,7 +245,7 @@ public class SheltersController(
             OperatingInstructions = request.OperatingInstructions.Trim(), ContactName = request.ContactName?.Trim(),
             ContactPhone = request.ContactPhone?.Trim(), ContactWhatsApp = request.ContactWhatsApp?.Trim(), ContactEmail = request.ContactEmail?.Trim(),
         };
-        shelter.SearchText = NormalizeSearch(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
+        shelter.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
         return shelter;
     }
 
@@ -267,7 +261,7 @@ public class SheltersController(
         shelter.ContactPhone = request.ContactPhone?.Trim();
         shelter.ContactWhatsApp = request.ContactWhatsApp?.Trim();
         shelter.ContactEmail = request.ContactEmail?.Trim();
-        shelter.SearchText = NormalizeSearch(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
+        shelter.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
         shelter.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -284,8 +278,4 @@ public class SheltersController(
         return null;
     }
 
-    private static string NormalizeSearch(string? value) => string.IsNullOrWhiteSpace(value) ? string.Empty :
-        new(value.Normalize(NormalizationForm.FormD)
-            .Where(character => CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && (char.IsLetterOrDigit(character) || char.IsWhiteSpace(character)))
-            .Select(char.ToUpperInvariant).ToArray());
 }

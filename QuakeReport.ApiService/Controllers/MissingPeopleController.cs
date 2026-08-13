@@ -1,15 +1,18 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -20,10 +23,10 @@ public class MissingPeopleController(
     ActiveEarthquakeService earthquakes,
     MissingPersonSecurity security,
     ITurnstileValidator turnstile,
-    IMissingPersonPhotoStorage photos) : ControllerBase
+    IMissingPersonPhotoStorage photos,
+    IQueryableRepositoryService<MissingPerson, Guid> peopleRepository,
+    IQueryableRepositoryService<MissingPersonTip, Guid> tipsRepository) : ControllerBase
 {
-    private const int DefaultPageSize = 20;
-    private const int MaxPageSize = 100;
     private const long MaxPhotoSize = 10 * 1024 * 1024;
 
     [HttpGet]
@@ -32,37 +35,33 @@ public class MissingPeopleController(
         [FromQuery] MissingPersonStatus status = MissingPersonStatus.Missing,
         [FromQuery] MissingPersonSortOption sort = MissingPersonSortOption.Newest,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize || !Enum.IsDefined(status) || !Enum.IsDefined(sort))
+        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(status) || !Enum.IsDefined(sort))
             return BadRequest("Invalid missing-person query parameters.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null) return Ok(new PagedResponse<MissingPersonSummaryResponse>([], page, pageSize, 0, 0));
-
-        var people = db.MissingPeople.AsNoTracking()
+        Guid? earthquakeId = earthquake?.Id;
+        var people = peopleRepository.QueryAll().AsNoTracking()
             .Include(person => person.Locations)
-            .Where(person => person.EarthquakeId == earthquake.Id && person.Status == status);
+            .Where(person => person.EarthquakeId == earthquakeId && person.Status == status);
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var normalized = NormalizeSearch(query);
+            var normalized = SearchTextNormalizer.Normalize(query);
             people = people.Where(person => person.SearchName!.Contains(normalized) ||
                 person.Locations.Any(location => location.SearchAddress!.Contains(normalized)));
         }
 
-        var count = await people.CountAsync(cancellationToken);
         var ordered = sort switch
         {
             MissingPersonSortOption.LastSeenNewest => people.OrderByDescending(person => person.LastSeenAt).ThenByDescending(person => person.Id),
             MissingPersonSortOption.Name => people.OrderBy(person => person.SearchName).ThenBy(person => person.Id),
             _ => people.OrderByDescending(person => person.CreatedAt).ThenByDescending(person => person.Id),
         };
-        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<MissingPersonSummaryResponse>(
-            items.Select(person => person.ToSummaryResponse()).ToList(), page, pageSize, count,
-            (int)Math.Ceiling(count / (double)pageSize)));
+        var projected = ordered.SelectOrdered(person => person.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]
@@ -77,14 +76,14 @@ public class MissingPeopleController(
     }
 
     [HttpGet("{id:guid}/tips")]
-    public async Task<IActionResult> Tips(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Tips(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize is < 1 or > MaxPageSize) return BadRequest("Invalid pagination.");
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Invalid pagination.");
         if (!await db.MissingPeople.AnyAsync(person => person.Id == id && person.Status != MissingPersonStatus.Closed, cancellationToken)) return NotFound();
-        var tips = db.MissingPersonTips.AsNoTracking().Where(tip => tip.MissingPersonId == id && !tip.IsHidden);
-        var count = await tips.CountAsync(cancellationToken);
-        var items = await tips.OrderByDescending(tip => tip.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<MissingPersonTipResponse>(items.Select(tip => tip.ToPublicResponse()).ToList(), page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
+        var tips = tipsRepository.QueryAll().AsNoTracking().Where(tip => tip.MissingPersonId == id && !tip.IsHidden);
+        var ordered = tips.OrderByDescending(tip => tip.CreatedAt).ThenByDescending(tip => tip.Id);
+        var projected = ordered.SelectOrdered(tip => tip.ToPublicResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost("management/lookup")]
@@ -114,7 +113,7 @@ public class MissingPeopleController(
         var code = MissingPersonSecurity.CreateManagementCode();
         var person = new MissingPerson
         {
-            Id = Guid.NewGuid(), EarthquakeId = earthquake.Id, FullName = request.FullName.Trim(), SearchName = NormalizeSearch(request.FullName + " " + request.Aliases),
+            Id = Guid.NewGuid(), EarthquakeId = earthquake.Id, FullName = request.FullName.Trim(), SearchName = SearchTextNormalizer.Normalize(request.FullName + " " + request.Aliases),
             Aliases = request.Aliases?.Trim(), ApproximateAge = request.ApproximateAge?.Trim(), IdentificationDocumentType = request.IdentificationDocumentType,
             IdentificationNumberHash = numberHash, IdentificationLastFour = LastFour(request.IdentificationNumber), Description = request.Description.Trim(),
             PhysicalDescription = request.PhysicalDescription?.Trim(), ClothingDescription = request.ClothingDescription?.Trim(), LastSeenAt = request.LastSeenAt,
@@ -122,7 +121,7 @@ public class MissingPeopleController(
         };
         person.Locations = request.Locations.Select(location => new MissingPersonLocation
         {
-            Id = Guid.NewGuid(), MissingPersonId = person.Id, Address = location.Address.Trim(), SearchAddress = NormalizeSearch(location.Address),
+            Id = Guid.NewGuid(), MissingPersonId = person.Id, Address = location.Address.Trim(), SearchAddress = SearchTextNormalizer.Normalize(location.Address),
             Location = GeoPoint.FromCoordinates(location.Latitude, location.Longitude), Note = location.Note?.Trim(),
         }).ToList();
         db.MissingPeople.Add(person);
@@ -213,7 +212,7 @@ public class MissingPeopleController(
         if (person is null) return NotFound();
         if (!Authorize(code, person)) return Unauthorized();
         person.FullName = request.FullName.Trim();
-        person.SearchName = NormalizeSearch(request.FullName + " " + request.Aliases);
+        person.SearchName = SearchTextNormalizer.Normalize(request.FullName + " " + request.Aliases);
         person.Aliases = request.Aliases?.Trim();
         person.ApproximateAge = request.ApproximateAge?.Trim();
         person.Description = request.Description.Trim();
@@ -227,7 +226,7 @@ public class MissingPeopleController(
             Id = Guid.NewGuid(),
             MissingPersonId = id,
             Address = location.Address.Trim(),
-            SearchAddress = NormalizeSearch(location.Address),
+            SearchAddress = SearchTextNormalizer.Normalize(location.Address),
             Location = GeoPoint.FromCoordinates(location.Latitude, location.Longitude),
             Note = location.Note?.Trim()
         }).ToList();
@@ -272,14 +271,6 @@ public class MissingPeopleController(
 
     private bool Authorize(string? code, MissingPerson person) => !string.IsNullOrWhiteSpace(code) && MissingPersonSecurity.Matches(code, person.ManagementCodeHash);
 
-    private static string NormalizeSearch(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : new(value.Normalize(System.Text.NormalizationForm.FormD)
-                .Where(character => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark && char.IsLetterOrDigit(character)
-                    || char.IsWhiteSpace(character))
-                .Select(char.ToUpperInvariant)
-                .ToArray());
     private static string? LastFour(string? value)
     {
         var normalized = value is null ? string.Empty : new(value.Where(char.IsLetterOrDigit).ToArray());

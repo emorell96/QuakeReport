@@ -1,16 +1,19 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Pagination;
+using QuakeReport.ApiService.Security;
+using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Contracts;
+using StorageGenerics.Core.Models;
+using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
 
@@ -19,10 +22,10 @@ public class BloodDonationCentersController(
     QuakeReportDbContext db,
     ActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IConfiguration configuration) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IQueryableRepositoryService<BloodDonationCenter, Guid> centersRepository,
+    IQueryableRepositoryService<BloodDonationCenterComment, Guid> commentsRepository) : ControllerBase
 {
-    private const int DefaultPageSize = 20, MaxPageSize = 100;
-
     [HttpGet]
     public async Task<IActionResult> List(
         [FromQuery] string? query = null,
@@ -33,12 +36,12 @@ public class BloodDonationCentersController(
         [FromQuery] BloodComponentFlags? components = null,
         [FromQuery] BloodDonationSortOption sort = BloodDonationSortOption.Newest,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default,
         [FromQuery] double? latitude = null,
         [FromQuery] double? longitude = null)
     {
-        if (page < 1 || pageSize < 1 || pageSize > MaxPageSize || !Enum.IsDefined(sort) ||
+        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
             (centerType is not null && !Enum.IsDefined(centerType.Value)) ||
             (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
             (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
@@ -50,11 +53,9 @@ public class BloodDonationCentersController(
             return BadRequest("Coordenadas inválidas.");
 
         var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        if (earthquake is null)
-            return Ok(new PagedResponse<BloodDonationCenterSummaryResponse>([], page, pageSize, 0, 0));
-
-        var centers = db.BloodDonationCenters.AsNoTracking()
-            .Where(x => x.EarthquakeId == earthquake.Id && x.ModerationStatus != BloodDonationModerationStatus.Rejected);
+        Guid? earthquakeId = earthquake?.Id;
+        var centers = centersRepository.QueryAll().AsNoTracking()
+            .Where(x => x.EarthquakeId == earthquakeId && x.ModerationStatus != BloodDonationModerationStatus.Rejected);
 
         if (moderationStatus is not null)
             centers = centers.Where(x => x.ModerationStatus == moderationStatus);
@@ -76,36 +77,28 @@ public class BloodDonationCentersController(
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var normalized = Normalize(query);
+            var normalized = SearchTextNormalizer.Normalize(query);
             centers = centers.Where(x => x.SearchText!.Contains(normalized));
         }
 
         if (latitude.HasValue)
         {
             var candidates = centers.Where(x => x.Location != null);
-            var count = await candidates.CountAsync(cancellationToken);
-            var nearest = await candidates
+            var nearest = candidates
                 .OrderByDistanceFrom(GeoPoint.FromCoordinates(latitude.Value, longitude!.Value), db.Database.IsNpgsql())
-                .ThenBy(x => x.Id)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToListAsync(cancellationToken);
-            return Ok(new PagedResponse<BloodDonationCenterSummaryResponse>(
-                nearest.Select(x => x.ToSummaryResponse()).ToList(),
-                page, pageSize, count, (int)Math.Ceiling(count / (double)pageSize)));
+                .ThenBy(x => x.Id);
+            var nearestProjected = nearest.SelectOrdered(x => x.ToSummaryResponse());
+            return Ok(await nearestProjected.ToPagedResultAsync(page, pageSize, cancellationToken));
         }
 
-        var total = await centers.CountAsync(cancellationToken);
         var ordered = sort switch
         {
             BloodDonationSortOption.RecentlyUpdated => centers.OrderByDescending(x => x.UpdatedAt).ThenByDescending(x => x.Id),
             BloodDonationSortOption.Name => centers.OrderBy(x => x.Name).ThenBy(x => x.Id),
             _ => centers.OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id)
         };
-        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-        return Ok(new PagedResponse<BloodDonationCenterSummaryResponse>(
-            items.Select(x => x.ToSummaryResponse()).ToList(),
-            page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+        var projected = ordered.SelectOrdered(x => x.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpGet("{id:guid}")]
@@ -128,25 +121,20 @@ public class BloodDonationCentersController(
     public async Task<IActionResult> Comments(
         Guid id,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1 || pageSize < 1 || pageSize > MaxPageSize) return BadRequest("Paginación inválida.");
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Paginación inválida.");
         if (!await db.BloodDonationCenters.AnyAsync(x => x.Id == id && x.ModerationStatus != BloodDonationModerationStatus.Rejected, cancellationToken))
             return NotFound();
 
-        var comments = db.BloodDonationCenterComments.AsNoTracking()
+        var comments = commentsRepository.QueryAll().AsNoTracking()
             .Where(x => x.BloodDonationCenterId == id && !x.IsHidden);
-        var total = await comments.CountAsync(cancellationToken);
-        var items = await comments
+        var ordered = comments
             .OrderByDescending(x => x.CreatedAt)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(cancellationToken);
-
-        return Ok(new PagedResponse<BloodDonationCenterCommentResponse>(
-            items.Select(x => x.ToResponse()).ToList(),
-            page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+            .ThenByDescending(x => x.Id);
+        var projected = ordered.SelectOrdered(x => x.ToResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost]
@@ -291,20 +279,18 @@ public class BloodDonationCentersController(
     public async Task<IActionResult> Pending(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = DefaultPageSize,
+        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
         CancellationToken cancellationToken = default)
     {
-        if (!Moderated(key) || page < 1 || pageSize < 1 || pageSize > MaxPageSize) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
+        if (!PaginationParameters.IsValid(page, pageSize)) return BadRequest("Paginación inválida.");
 
-        var centers = db.BloodDonationCenters.AsNoTracking()
+        var centers = centersRepository.QueryAll().AsNoTracking()
             .Where(x => x.ModerationStatus == BloodDonationModerationStatus.Pending)
-            .OrderBy(x => x.CreatedAt);
-        var total = await centers.CountAsync(cancellationToken);
-        var items = await centers.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
-
-        return Ok(new PagedResponse<BloodDonationCenterSummaryResponse>(
-            items.Select(x => x.ToSummaryResponse()).ToList(),
-            page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+            .OrderBy(x => x.CreatedAt)
+            .ThenBy(x => x.Id);
+        var projected = centers.SelectOrdered(x => x.ToSummaryResponse());
+        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
     }
 
     [HttpPost("moderation/official")]
@@ -314,7 +300,7 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var error = Validate(request);
         if (error is not null) return BadRequest(error);
@@ -339,7 +325,7 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
         if (!Enum.IsDefined(request.Status)) return BadRequest();
 
         var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
@@ -360,7 +346,7 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (center is null) return NotFound();
@@ -380,7 +366,7 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var center = await db.BloodDonationCenters.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         if (center is null) return NotFound();
@@ -399,7 +385,7 @@ public class BloodDonationCentersController(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
-        if (!Moderated(key)) return Unauthorized();
+        if (!moderationKey.IsValid(key)) return Unauthorized();
 
         var comment = await db.BloodDonationCenterComments
             .SingleOrDefaultAsync(x => x.Id == commentId && x.BloodDonationCenterId == id, cancellationToken);
@@ -410,10 +396,6 @@ public class BloodDonationCentersController(
         return NoContent();
     }
 
-    private bool Moderated(string? supplied) =>
-        !string.IsNullOrWhiteSpace(supplied) && CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(supplied),
-            Encoding.UTF8.GetBytes(configuration["Moderation:ApiKey"] ?? "__missing__"));
 
     private static bool Authorize(string? code, BloodDonationCenter center) =>
         !string.IsNullOrWhiteSpace(code) && center.ManagementCodeHash is not null &&
@@ -449,7 +431,7 @@ public class BloodDonationCentersController(
             ModerationStatus = moderation,
             ManagementCodeHash = code is null ? null : MissingPersonSecurity.HashManagementCode(code)
         };
-        c.SearchText = Normalize(string.Join(' ', c.Name, c.OrganizationName, c.Address, c.NeedsSummary, c.OperatingInstructions));
+        c.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', c.Name, c.OrganizationName, c.Address, c.NeedsSummary, c.OperatingInstructions));
         return c;
     }
 
@@ -470,7 +452,7 @@ public class BloodDonationCentersController(
         c.Components = r.Components;
         c.StartsAt = r.StartsAt;
         c.EndsAt = r.EndsAt;
-        c.SearchText = Normalize(string.Join(' ', c.Name, c.OrganizationName, c.Address, c.NeedsSummary, c.OperatingInstructions));
+        c.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', c.Name, c.OrganizationName, c.Address, c.NeedsSummary, c.OperatingInstructions));
         c.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
@@ -518,12 +500,4 @@ public class BloodDonationCentersController(
             BloodComponentFlags.Plasma | BloodComponentFlags.Platelets |
             BloodComponentFlags.Unknown)) == 0;
 
-    private static string Normalize(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : new(value.Normalize(System.Text.NormalizationForm.FormD)
-                .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark &&
-                    (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)))
-                .Select(char.ToUpperInvariant)
-                .ToArray());
 }

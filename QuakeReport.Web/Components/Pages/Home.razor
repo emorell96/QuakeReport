@@ -309,14 +309,14 @@ else
 
             _earthquake = await earthquakeTask;
             var response = await reportsTask;
-            _reports = response.Items;
-            _totalCount = response.TotalCount;
+            _reports = response.Results.ToList();
+            _totalCount = response.TotalMatches;
             _totalPages = response.TotalPages;
-            _missingPeople = (await missingPeopleTask).Items;
-            _shelters = (await sheltersTask).Items;
-            _collectionPoints = (await collectionPointsTask).Items;
-            _helpRequests = (await helpRequestsTask).Items;
-            _bloodDonationCenters = (await bloodDonationTask).Items;
+            _missingPeople = (await missingPeopleTask).Results.ToList();
+            _shelters = (await sheltersTask).Results.ToList();
+            _collectionPoints = (await collectionPointsTask).Results.ToList();
+            _helpRequests = (await helpRequestsTask).Results.ToList();
+            _bloodDonationCenters = (await bloodDonationTask).Results.ToList();
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -375,9 +375,9 @@ else
 
             string? destination = kind switch
             {
-                NearestKind.BloodDonationCenter => (await ApiClient.GetBloodDonationCentersAsync(pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Items.FirstOrDefault() is { } center ? $"/donacion-sangre/{center.Id}" : null,
-                NearestKind.Shelter => (await ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Items.FirstOrDefault() is { } shelter ? $"/refugios/{shelter.Id}" : null,
-                _ => (await ApiClient.GetCollectionPointsAsync(operationalStatus: CollectionPointOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Items.FirstOrDefault() is { } point ? $"/collection-points/{point.Id}" : null,
+                NearestKind.BloodDonationCenter => (await ApiClient.GetBloodDonationCentersAsync(pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Results.FirstOrDefault() is { } center ? $"/donacion-sangre/{center.Id}" : null,
+                NearestKind.Shelter => (await ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Results.FirstOrDefault() is { } shelter ? $"/refugios/{shelter.Id}" : null,
+                _ => (await ApiClient.GetCollectionPointsAsync(operationalStatus: CollectionPointOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Results.FirstOrDefault() is { } point ? $"/collection-points/{point.Id}" : null,
             };
 
             if (destination is null)

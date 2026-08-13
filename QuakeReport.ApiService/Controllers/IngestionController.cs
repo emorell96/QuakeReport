@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
@@ -7,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Ingestion;
+using QuakeReport.ApiService.Text;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
 using QuakeReport.Data;
@@ -103,7 +103,7 @@ public sealed class IngestionController(
             ContactPhone = Trim(data.ContactPhone), ContactWhatsApp = Trim(data.ContactWhatsApp), ContactEmail = Trim(data.ContactEmail), EndsAt = data.EndsAt,
             Source = CollectionPointSource.Automated, ModerationStatus = CollectionPointModerationStatus.Pending
         };
-        point.SearchText = Normalize(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
+        point.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', point.Name, point.OrganizationName, point.Address, point.NeedsSummary));
         db.CollectionPoints.Add(point);
         return (id, null);
     }
@@ -126,7 +126,7 @@ public sealed class IngestionController(
             CenterType = data.CenterType, BloodTypes = data.BloodTypes, Components = data.Components, StartsAt = data.StartsAt, EndsAt = data.EndsAt,
             Source = BloodDonationSource.Automated, ModerationStatus = BloodDonationModerationStatus.Pending
         };
-        center.SearchText = Normalize(string.Join(' ', center.Name, center.OrganizationName, center.Address, center.NeedsSummary));
+        center.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', center.Name, center.OrganizationName, center.Address, center.NeedsSummary));
         db.BloodDonationCenters.Add(center);
         return (id, null);
     }
@@ -143,7 +143,7 @@ public sealed class IngestionController(
             ContactName = Trim(data.ContactName), ContactPhone = Trim(data.ContactPhone), ContactWhatsApp = Trim(data.ContactWhatsApp), ContactEmail = Trim(data.ContactEmail),
             Source = ShelterSource.Automated, ModerationStatus = ShelterModerationStatus.Pending
         };
-        shelter.SearchText = Normalize(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
+        shelter.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', shelter.Name, shelter.OrganizationName, shelter.Address, shelter.Description));
         db.Shelters.Add(shelter);
         return (id, null);
     }
@@ -163,7 +163,7 @@ public sealed class IngestionController(
             PublicWhatsApp = Trim(data.PublicWhatsApp), PublicEmail = Trim(data.PublicEmail), Priority = data.Priority, NeedCategories = data.NeedCategories, NeededBy = data.NeededBy,
             Source = HelpRequestSource.Automated, ModerationStatus = HelpRequestModerationStatus.Pending
         };
-        request.SearchText = Normalize(string.Join(' ', request.Title, request.RequesterName, request.OrganizationName, request.Address, request.NeedDetails));
+        request.SearchText = SearchTextNormalizer.Normalize(string.Join(' ', request.Title, request.RequesterName, request.OrganizationName, request.Address, request.NeedDetails));
         db.HelpRequests.Add(request);
         return (id, null);
     }
@@ -189,14 +189,6 @@ public sealed class IngestionController(
     private static string? Trim(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private static bool ValidCoordinates(double? latitude, double? longitude) => latitude is null && longitude is null || latitude is >= -90 and <= 90 && longitude is >= -180 and <= 180;
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
-    private static string Normalize(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? string.Empty
-            : new(value.Normalize(NormalizationForm.FormD)
-                .Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark &&
-                    (char.IsLetterOrDigit(c) || char.IsWhiteSpace(c)))
-                .Select(char.ToUpperInvariant)
-                .ToArray());
     private static string PublicPath(IngestionEntityType type, Guid id) => type switch
     {
         IngestionEntityType.CollectionPoint => $"/collection-points/{id}",

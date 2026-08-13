@@ -24,7 +24,7 @@ public class QuakeReportApiClientTests
             -74.3,
             "Main Street",
             DateTimeOffset.UtcNow);
-        var expected = new PagedResponse<DamageReportSummaryResponse>([report], 2, 10, 21, 3);
+        var expected = new { Results = new[] { report }, PageNumber = 2, PageSize = 10, TotalMatches = 21, TotalPages = 3 };
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = JsonContent.Create(expected),
@@ -43,11 +43,11 @@ public class QuakeReportApiClientTests
         Assert.AreEqual(
             "/api/reports?page=2&pageSize=10&sort=HighestSeverity&severity=Major",
             handler.RequestUri?.PathAndQuery);
-        Assert.AreEqual(2, result.Page);
+        Assert.AreEqual(2, result.PageNumber);
         Assert.AreEqual(10, result.PageSize);
-        Assert.AreEqual(21, result.TotalCount);
+        Assert.AreEqual(21, result.TotalMatches);
         Assert.AreEqual(3, result.TotalPages);
-        Assert.AreEqual(report.Id, result.Items.Single().Id);
+        Assert.AreEqual(report.Id, result.Results.Single().Id);
     }
 
     [TestMethod]
@@ -55,7 +55,7 @@ public class QuakeReportApiClientTests
     {
         var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new PagedResponse<DamageReportSummaryResponse>([], 1, 20, 0, 0)),
+            Content = JsonContent.Create(new { Results = Array.Empty<DamageReportSummaryResponse>(), PageNumber = 1, PageSize = 20, TotalMatches = 0, TotalPages = 0 }),
         });
         var client = new QuakeReportApiClient(new HttpClient(handler)
         {
