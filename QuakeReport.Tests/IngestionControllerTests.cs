@@ -65,9 +65,13 @@ public class IngestionControllerTests
             new(IngestionPlatform.X, "https://x.com/example/status/2", null, null, null, 0.5m, null),
             new("Centro", null, "Calle 1", null, null, null, "Agua", "Recibir", null, null, null, null, null));
 
-        Assert.IsInstanceOfType(await controller.CollectionPoint(request, CancellationToken.None), typeof(UnauthorizedResult));
+        Assert.IsInstanceOfType(
+            TestAssert.Unwrap(await controller.CollectionPoint(request, CancellationToken.None)),
+            typeof(UnauthorizedResult));
         SetHeaders(controller, "ingestion-secret", null);
-        Assert.IsInstanceOfType(await controller.CollectionPoint(request, CancellationToken.None), typeof(BadRequestObjectResult));
+        Assert.IsInstanceOfType(
+            TestAssert.Unwrap(await controller.CollectionPoint(request, CancellationToken.None)),
+            typeof(BadRequestObjectResult));
     }
 
     private static IngestionController Controller(QuakeReport.Data.QuakeReportDbContext db, string key) =>

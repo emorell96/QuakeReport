@@ -16,7 +16,7 @@ public sealed class GeocodingReviewController(
     IModerationKeyValidator moderationKey) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> List(
+    public async Task<ActionResult<IReadOnlyList<GeocodingReviewItemResponse>>> List(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] GeocodingReviewStatus? status = null,
         CancellationToken cancellationToken = default)
@@ -30,7 +30,7 @@ public sealed class GeocodingReviewController(
     }
 
     [HttpPost("{id:guid}/retry")]
-    public async Task<IActionResult> Retry(Guid id,
+    public async Task<ActionResult> Retry(Guid id,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
@@ -42,7 +42,7 @@ public sealed class GeocodingReviewController(
     }
 
     [HttpPut("{id:guid}/resolve")]
-    public async Task<IActionResult> Resolve(Guid id, ResolveGeocodingReviewRequest request,
+    public async Task<ActionResult> Resolve(Guid id, ResolveGeocodingReviewRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {
@@ -71,7 +71,7 @@ public sealed class GeocodingReviewController(
     }
 
     [HttpPost("{id:guid}/dismiss")]
-    public async Task<IActionResult> Dismiss(Guid id, DismissGeocodingReviewRequest request,
+    public async Task<ActionResult> Dismiss(Guid id, DismissGeocodingReviewRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         CancellationToken cancellationToken)
     {

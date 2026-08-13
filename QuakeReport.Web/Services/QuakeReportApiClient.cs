@@ -1,9 +1,10 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Configuration;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using StorageGenerics.Core.Models;
 
 namespace QuakeReport.Web.Services;
@@ -40,39 +41,23 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task<PagedResult<BloodDonationCenterSummaryResponse>> GetBloodDonationCentersAsync(
-        string? query = null,
-        BloodDonationCenterType? centerType = null,
-        BloodDonationOperationalStatus? operationalStatus = null,
-        BloodDonationModerationStatus? moderationStatus = null,
-        BloodTypeFlags? bloodTypes = null,
-        BloodComponentFlags? components = null,
-        BloodDonationSortOption sort = BloodDonationSortOption.Newest,
+    public Task<PagedResult<BloodDonationCenterSummaryResponse>> GetAllBloodDonationCentersAsync(
         int page = 1,
         int pageSize = 20,
-        CancellationToken cancellationToken = default,
-        double? latitude = null,
-        double? longitude = null)
-    {
-        var p = new Dictionary<string, string?>
-        {
-            ["page"] = page.ToString(),
-            ["pageSize"] = pageSize.ToString(),
-            ["sort"] = sort.ToString()
-        };
-        if (!string.IsNullOrWhiteSpace(query)) p["query"] = query;
-        if (centerType is not null) p["centerType"] = centerType.ToString();
-        if (operationalStatus is not null) p["operationalStatus"] = operationalStatus.ToString();
-        if (moderationStatus is not null) p["moderationStatus"] = moderationStatus.ToString();
-        if (bloodTypes is not null) p["bloodTypes"] = bloodTypes.ToString();
-        if (components is not null) p["components"] = components.ToString();
-        if (latitude is not null) p["latitude"] = latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        if (longitude is not null) p["longitude"] = longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        CancellationToken cancellationToken = default) =>
+        GetPageAsync<BloodDonationCenterSummaryResponse>(
+            "/api/blood-donation-centers",
+            page,
+            pageSize,
+            cancellationToken);
 
-        var uri = QueryHelpers.AddQueryString("/api/blood-donation-centers", p);
-        return await httpClient.GetFromJsonAsync<PagedResult<BloodDonationCenterSummaryResponse>>(uri, cancellationToken)
-            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
-    }
+    public Task<PagedResult<BloodDonationCenterSummaryResponse>> SearchBloodDonationCentersAsync(
+        PagedRequest<BloodDonationCenterSearchFilter> request,
+        CancellationToken cancellationToken = default) =>
+        SearchPageAsync<BloodDonationCenterSummaryResponse>(
+            "/api/blood-donation-centers/search",
+            request,
+            cancellationToken);
 
     public async Task<BloodDonationCenterResponse?> GetBloodDonationCenterAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -199,27 +184,23 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await r.Content.ReadFromJsonAsync<BloodDonationCenterResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResult<HelpRequestSummaryResponse>> GetHelpRequestsAsync(
-        string? query = null,
-        HelpRequestPriority? priority = null,
-        HelpNeedCategory? category = null,
-        HelpRequestStatus? status = null,
-        HelpRequestModerationStatus? moderationStatus = null,
-        HelpRequestSortOption sort = HelpRequestSortOption.HighestPriority,
+    public Task<PagedResult<HelpRequestSummaryResponse>> GetAllHelpRequestsAsync(
         int page = 1,
         int pageSize = 20,
-        CancellationToken cancellationToken = default)
-    {
-        var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };
-        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
-        if (priority is not null) parameters["priority"] = priority.ToString();
-        if (category is not null) parameters["category"] = category.ToString();
-        if (status is not null) parameters["status"] = status.ToString();
-        if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
-        var uri = QueryHelpers.AddQueryString("/api/help-requests", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResult<HelpRequestSummaryResponse>>(uri, cancellationToken)
-            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
-    }
+        CancellationToken cancellationToken = default) =>
+        GetPageAsync<HelpRequestSummaryResponse>(
+            "/api/help-requests",
+            page,
+            pageSize,
+            cancellationToken);
+
+    public Task<PagedResult<HelpRequestSummaryResponse>> SearchHelpRequestsAsync(
+        PagedRequest<HelpRequestSearchFilter> request,
+        CancellationToken cancellationToken = default) =>
+        SearchPageAsync<HelpRequestSummaryResponse>(
+            "/api/help-requests/search",
+            request,
+            cancellationToken);
 
     public async Task<HelpRequestResponse?> GetHelpRequestAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -324,27 +305,23 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await response.Content.ReadFromJsonAsync<HelpRequestResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResult<ShelterSummaryResponse>> GetSheltersAsync(
-        string? query = null,
-        ShelterOperationalStatus? operationalStatus = null,
-        ShelterModerationStatus? moderationStatus = null,
-        ShelterSortOption sort = ShelterSortOption.Newest,
+    public Task<PagedResult<ShelterSummaryResponse>> GetAllSheltersAsync(
         int page = 1,
         int pageSize = 20,
-        CancellationToken cancellationToken = default,
-        double? latitude = null,
-        double? longitude = null)
-    {
-        var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };
-        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
-        if (operationalStatus is not null) parameters["operationalStatus"] = operationalStatus.ToString();
-        if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
-        if (latitude is not null) parameters["latitude"] = latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        if (longitude is not null) parameters["longitude"] = longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var uri = QueryHelpers.AddQueryString("/api/shelters", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResult<ShelterSummaryResponse>>(uri, cancellationToken)
-            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
-    }
+        CancellationToken cancellationToken = default) =>
+        GetPageAsync<ShelterSummaryResponse>(
+            "/api/shelters",
+            page,
+            pageSize,
+            cancellationToken);
+
+    public Task<PagedResult<ShelterSummaryResponse>> SearchSheltersAsync(
+        PagedRequest<ShelterSearchFilter> request,
+        CancellationToken cancellationToken = default) =>
+        SearchPageAsync<ShelterSummaryResponse>(
+            "/api/shelters/search",
+            request,
+            cancellationToken);
 
     public async Task<ShelterResponse?> GetShelterAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -434,27 +411,23 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return (await response.Content.ReadFromJsonAsync<ShelterResponse>(cancellationToken))!;
     }
 
-    public async Task<PagedResult<CollectionPointSummaryResponse>> GetCollectionPointsAsync(
-        string? query = null,
-        CollectionPointOperationalStatus? operationalStatus = null,
-        CollectionPointModerationStatus? moderationStatus = null,
-        CollectionPointSortOption sort = CollectionPointSortOption.Newest,
+    public Task<PagedResult<CollectionPointSummaryResponse>> GetAllCollectionPointsAsync(
         int page = 1,
         int pageSize = 20,
-        CancellationToken cancellationToken = default,
-        double? latitude = null,
-        double? longitude = null)
-    {
-        var parameters = new Dictionary<string, string?> { ["page"] = page.ToString(), ["pageSize"] = pageSize.ToString(), ["sort"] = sort.ToString() };
-        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
-        if (operationalStatus is not null) parameters["operationalStatus"] = operationalStatus.ToString();
-        if (moderationStatus is not null) parameters["moderationStatus"] = moderationStatus.ToString();
-        if (latitude is not null) parameters["latitude"] = latitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        if (longitude is not null) parameters["longitude"] = longitude.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var uri = QueryHelpers.AddQueryString("/api/collection-points", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResult<CollectionPointSummaryResponse>>(uri, cancellationToken)
-            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
-    }
+        CancellationToken cancellationToken = default) =>
+        GetPageAsync<CollectionPointSummaryResponse>(
+            "/api/collection-points",
+            page,
+            pageSize,
+            cancellationToken);
+
+    public Task<PagedResult<CollectionPointSummaryResponse>> SearchCollectionPointsAsync(
+        PagedRequest<CollectionPointSearchFilter> request,
+        CancellationToken cancellationToken = default) =>
+        SearchPageAsync<CollectionPointSummaryResponse>(
+            "/api/collection-points/search",
+            request,
+            cancellationToken);
 
     public async Task<CollectionPointResponse?> GetCollectionPointAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -540,26 +513,23 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<CollectionPointResponse>(cancellationToken))!;
     }
-    public async Task<PagedResult<MissingPersonSummaryResponse>> GetMissingPeopleAsync(
-        string? query = null,
-        MissingPersonStatus status = MissingPersonStatus.Missing,
-        MissingPersonSortOption sort = MissingPersonSortOption.Newest,
+    public Task<PagedResult<MissingPersonSummaryResponse>> GetAllMissingPeopleAsync(
         int page = 1,
         int pageSize = 20,
-        CancellationToken cancellationToken = default)
-    {
-        var parameters = new Dictionary<string, string?>
-        {
-            ["page"] = page.ToString(),
-            ["pageSize"] = pageSize.ToString(),
-            ["status"] = status.ToString(),
-            ["sort"] = sort.ToString()
-        };
-        if (!string.IsNullOrWhiteSpace(query)) parameters["query"] = query;
-        var uri = Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/api/missing-people", parameters);
-        return await httpClient.GetFromJsonAsync<PagedResult<MissingPersonSummaryResponse>>(uri, cancellationToken)
-            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
-    }
+        CancellationToken cancellationToken = default) =>
+        GetPageAsync<MissingPersonSummaryResponse>(
+            "/api/missing-people",
+            page,
+            pageSize,
+            cancellationToken);
+
+    public Task<PagedResult<MissingPersonSummaryResponse>> SearchMissingPeopleAsync(
+        PagedRequest<MissingPersonSearchFilter> request,
+        CancellationToken cancellationToken = default) =>
+        SearchPageAsync<MissingPersonSummaryResponse>(
+            "/api/missing-people/search",
+            request,
+            cancellationToken);
 
     public async Task<MissingPersonResponse?> GetMissingPersonAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -670,29 +640,23 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         return await response.Content.ReadFromJsonAsync<EarthquakeResponse>(cancellationToken);
     }
 
-    public async Task<PagedResult<DamageReportSummaryResponse>> GetReportsAsync(
+    public Task<PagedResult<DamageReportSummaryResponse>> GetAllReportsAsync(
         int page = 1,
         int pageSize = 20,
-        SeverityLevel? severity = null,
-        ReportSortOption sort = ReportSortOption.Newest,
-        CancellationToken cancellationToken = default)
-    {
-        var query = new Dictionary<string, string?>
-        {
-            [nameof(page)] = page.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            [nameof(pageSize)] = pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            [nameof(sort)] = sort.ToString(),
-        };
+        CancellationToken cancellationToken = default) =>
+        GetPageAsync<DamageReportSummaryResponse>(
+            "/api/reports",
+            page,
+            pageSize,
+            cancellationToken);
 
-        if (severity.HasValue)
-        {
-            query[nameof(severity)] = severity.Value.ToString();
-        }
-
-        var uri = QueryHelpers.AddQueryString("/api/reports", query);
-        return await httpClient.GetFromJsonAsync<PagedResult<DamageReportSummaryResponse>>(uri, cancellationToken)
-            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
-    }
+    public Task<PagedResult<DamageReportSummaryResponse>> SearchReportsAsync(
+        PagedRequest<DamageReportSearchFilter> request,
+        CancellationToken cancellationToken = default) =>
+        SearchPageAsync<DamageReportSummaryResponse>(
+            "/api/reports/search",
+            request,
+            cancellationToken);
 
     public async Task<DamageReportResponse?> GetReportAsync(Guid id, CancellationToken cancellationToken = default)
     {
@@ -730,6 +694,37 @@ public class QuakeReportApiClient(HttpClient httpClient, IConfiguration? configu
         var response = await httpClient.PostAsync($"/api/reports/{reportId}/media", form, cancellationToken);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ReportMediaResponse>(cancellationToken))!;
+    }
+
+    private async Task<PagedResult<TResponse>> GetPageAsync<TResponse>(
+        string resourceUri,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var query = new Dictionary<string, string?>
+        {
+            [nameof(page)] = page.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            [nameof(pageSize)] = pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        };
+        var uri = QueryHelpers.AddQueryString(resourceUri, query);
+        return await httpClient.GetFromJsonAsync<PagedResult<TResponse>>(uri, cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
+    }
+
+    private async Task<PagedResult<TResponse>> SearchPageAsync<TResponse>(
+        string resourceUri,
+        object request,
+        CancellationToken cancellationToken)
+    {
+        var response = await httpClient.PostAsJsonAsync(
+            resourceUri,
+            request,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        return await response.Content.ReadFromJsonAsync<PagedResult<TResponse>>(cancellationToken)
+            ?? throw new InvalidOperationException("The API returned an empty pagination response.");
     }
 
     private sealed record PhotoResponse(string PhotoUrl);

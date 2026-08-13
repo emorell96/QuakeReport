@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using QuakeReport.ApiService.Media;
@@ -53,8 +54,26 @@ internal static class TestAssert
 {
     public static T InstanceOf<T>(object? value) where T : class
     {
+        value = Unwrap(value);
         Assert.IsInstanceOfType(value, typeof(T));
         return (T)value!;
+    }
+
+    public static object? Unwrap(object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        var type = value.GetType();
+        if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(ActionResult<>))
+        {
+            return value;
+        }
+
+        var result = type.GetProperty(nameof(ActionResult<object>.Result))?.GetValue(value);
+        return result ?? type.GetProperty(nameof(ActionResult<object>.Value))?.GetValue(value);
     }
 }
 

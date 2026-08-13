@@ -10,6 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Aspire.Azure.Storage.Blobs" Version="13.4.6" />
     <PackageReference Include="Aspire.Azure.Npgsql.EntityFrameworkCore.PostgreSQL" Version="13.4.6" />
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.9" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -25,6 +26,7 @@
     <ProjectReference Include="..\QuakeReport.ServiceDefaults\QuakeReport.ServiceDefaults.csproj" />
     <ProjectReference Include="..\QuakeReport.Data\QuakeReport.Data.csproj" />
     <ProjectReference Include="..\QuakeReport.Contracts\QuakeReport.Contracts.csproj" />
+    <ProjectReference Include="..\QuakeReport.Core\QuakeReport.Core.csproj" />
     <ProjectReference Include="..\QuakeReport.Geospatial\QuakeReport.Geospatial.csproj" />
   </ItemGroup>
 

@@ -7,6 +7,10 @@ namespace QuakeReport.ApiService.Earthquakes;
 public interface IActiveEarthquakeService
 {
     Task<Earthquake?> GetActiveEarthquakeAsync(CancellationToken cancellationToken);
+
+    Task<Guid?> ResolveEarthquakeIdAsync(
+        Guid? requestedEarthquakeId,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -18,4 +22,17 @@ public sealed class ActiveEarthquakeService(QuakeReportDbContext dbContext) : IA
 {
     public async Task<Earthquake?> GetActiveEarthquakeAsync(CancellationToken cancellationToken) =>
         await dbContext.Earthquakes.SingleOrDefaultAsync(e => e.IsActive, cancellationToken);
+
+    public async Task<Guid?> ResolveEarthquakeIdAsync(
+        Guid? requestedEarthquakeId,
+        CancellationToken cancellationToken)
+    {
+        if (requestedEarthquakeId is not null)
+        {
+            return requestedEarthquakeId;
+        }
+
+        var activeEarthquake = await GetActiveEarthquakeAsync(cancellationToken);
+        return activeEarthquake?.Id;
+    }
 }

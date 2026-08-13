@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.CollectionPoints;
 using QuakeReport.ApiService.Dtos;
@@ -6,10 +7,13 @@ using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Pagination;
 using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Text;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
@@ -20,42 +24,85 @@ public class CollectionPointsController(
     ICollectionPointService collectionPoints,
     IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IValidator<PaginationRequest> paginationValidator,
+    IValidator<PagedRequest<CollectionPointSearchFilter>> searchValidator) : ControllerBase
 {
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] string? query = null,
-        [FromQuery] CollectionPointOperationalStatus? operationalStatus = null,
-        [FromQuery] CollectionPointModerationStatus? moderationStatus = null,
-        [FromQuery] CollectionPointSortOption sort = CollectionPointSortOption.Newest,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
-        CancellationToken cancellationToken = default,
-        [FromQuery] double? latitude = null, [FromQuery] double? longitude = null)
+    public async Task<ActionResult<PagedResult<CollectionPointSummaryResponse>>> List(
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
-            (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
-            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
-            (latitude.HasValue != longitude.HasValue) ||
-            (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
+        var validation = await paginationValidator.ValidateAsync(pagination, cancellationToken);
+        if (!validation.IsValid)
         {
-            return BadRequest("Invalid collection-point query parameters.");
+            return BadRequest(validation.ToProblemDetails("Invalid pagination parameters."));
         }
 
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(null, cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
         var criteria = new CollectionPointQueryCriteria(
-            earthquake?.Id,
-            query,
-            operationalStatus,
-            moderationStatus,
-            sort,
-            latitude,
-            longitude);
+            earthquakeId.Value,
+            null,
+            null,
+            null,
+            CollectionPointSortOption.Newest,
+            null,
+            null);
         var ordered = collectionPoints.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(point => point.ToSummaryResponse());
-        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
+        var result = await projected.ToPagedResultAsync(
+            pagination.Page,
+            pagination.PageSize,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("search")]
+    public async Task<ActionResult<PagedResult<CollectionPointSummaryResponse>>> Search(
+        [FromBody] PagedRequest<CollectionPointSearchFilter> request,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await searchValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails("Invalid collection-point search."));
+        }
+
+        var filter = request.Filter!;
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(
+            filter.EarthquakeId,
+            cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
+        var criteria = new CollectionPointQueryCriteria(
+            earthquakeId.Value,
+            filter.SearchText,
+            filter.OperationalStatus,
+            filter.ModerationStatus,
+            filter.Sort,
+            filter.CenterPoint?.Latitude,
+            filter.CenterPoint?.Longitude);
+        var ordered = collectionPoints.GetOrderedQuery(criteria);
+        var projected = ordered.SelectOrdered(point => point.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<CollectionPointResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var point = await collectionPoints.GetPublicAsync(id, cancellationToken);
         if (point is null)
@@ -68,7 +115,7 @@ public class CollectionPointsController(
     }
 
     [HttpGet("{id:guid}/comments")]
-    public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<PagedResult<CollectionPointCommentResponse>>> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
         if (!PaginationParameters.IsValid(page, pageSize))
         {
@@ -86,7 +133,7 @@ public class CollectionPointsController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateCollectionPointRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CreateCollectionPointResponse>> Create(CreateCollectionPointRequest request, CancellationToken cancellationToken)
     {
         var error = Validate(request);
         if (error is not null)
@@ -114,7 +161,7 @@ public class CollectionPointsController(
     }
 
     [HttpPost("management/lookup")]
-    public async Task<IActionResult> LookupManagementCode(CollectionPointManagementCodeRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CollectionPointResponse>> LookupManagementCode(CollectionPointManagementCodeRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.ManagementCode))
         {
@@ -132,7 +179,7 @@ public class CollectionPointsController(
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, UpdateCollectionPointRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<CollectionPointResponse>> Update(Guid id, UpdateCollectionPointRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
         if (point is null)
@@ -157,7 +204,7 @@ public class CollectionPointsController(
     }
 
     [HttpPatch("{id:guid}/status")]
-    public async Task<IActionResult> Status(Guid id, UpdateCollectionPointStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<CollectionPointResponse>> Status(Guid id, UpdateCollectionPointStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
         if (point is null)
@@ -182,7 +229,7 @@ public class CollectionPointsController(
     }
 
     [HttpPost("{id:guid}/comments")]
-    public async Task<IActionResult> CreateComment(Guid id, CreateCollectionPointCommentRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CollectionPointCommentResponse>> CreateComment(Guid id, CreateCollectionPointCommentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
         {
@@ -214,7 +261,7 @@ public class CollectionPointsController(
     }
 
     [HttpPatch("{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> HideComment(Guid id, Guid commentId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult> HideComment(Guid id, Guid commentId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var point = await collectionPoints.GetForUpdateAsync(id, cancellationToken);
         if (point is null)
@@ -236,7 +283,7 @@ public class CollectionPointsController(
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
-    public async Task<IActionResult> Abuse(Guid id, CollectionPointAbuseReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> Abuse(Guid id, CollectionPointAbuseReportRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Reason))
         {
@@ -269,7 +316,7 @@ public class CollectionPointsController(
 
 
     [HttpGet("moderation/pending")]
-    public async Task<IActionResult> Pending(
+    public async Task<ActionResult<PagedResult<CollectionPointSummaryResponse>>> Pending(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
@@ -290,7 +337,7 @@ public class CollectionPointsController(
     }
 
     [HttpPost("moderation/official")]
-    public async Task<IActionResult> CreateOfficial(
+    public async Task<ActionResult<CollectionPointResponse>> CreateOfficial(
         CreateCollectionPointRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
@@ -322,7 +369,7 @@ public class CollectionPointsController(
     }
 
     [HttpPatch("moderation/{id:guid}")]
-    public async Task<IActionResult> Moderate(
+    public async Task<ActionResult<CollectionPointResponse>> Moderate(
         Guid id,
         UpdateCollectionPointModerationRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -353,7 +400,7 @@ public class CollectionPointsController(
     }
 
     [HttpPatch("moderation/{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> ModerateComment(
+    public async Task<ActionResult> ModerateComment(
         Guid id,
         Guid commentId,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,

@@ -7,6 +7,7 @@ using StorageGenerics.Core.Contracts;
 namespace QuakeReport.ApiService.Reports;
 
 public sealed record DamageReportQueryCriteria(
+    Guid EarthquakeId,
     SeverityLevel? Severity,
     ReportSortOption Sort);
 
@@ -29,7 +30,9 @@ public sealed class DamageReportService(
 {
     public IOrderedQueryable<DamageReport> GetOrderedQuery(DamageReportQueryCriteria criteria)
     {
-        var query = reports.QueryAll().AsNoTracking();
+        var query = reports.QueryAll()
+            .AsNoTracking()
+            .Where(report => report.EarthquakeId == criteria.EarthquakeId);
 
         if (criteria.Severity is not null)
         {

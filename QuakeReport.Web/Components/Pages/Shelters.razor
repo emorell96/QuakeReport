@@ -37,19 +37,111 @@ else
 
 @code {
     private IReadOnlyList<ShelterSummaryResponse> _items = [];
-    private string? _query; private ShelterOperationalStatus? _operational; private ShelterModerationStatus? _moderation;
-    private ShelterSortOption _sort = ShelterSortOption.Newest; private int _page = 1, _totalPages; private bool _loading; private CancellationTokenSource? _cts;
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task SearchAsync() { _page = 1; await LoadAsync(); }
-    private async Task PageChangedAsync(int page) { _page = page; await LoadAsync(); }
+    private string? _query;
+    private ShelterOperationalStatus? _operational;
+    private ShelterModerationStatus? _moderation;
+    private ShelterSortOption _sort = ShelterSortOption.Newest;
+    private int _page = 1;
+    private int _totalPages;
+    private bool _loading;
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _page = 1;
+        await LoadAsync();
+    }
+
+    private async Task PageChangedAsync(int page)
+    {
+        _page = page;
+        await LoadAsync();
+    }
+
     private async Task LoadAsync()
     {
-        var cts = new CancellationTokenSource(); var previous = Interlocked.Exchange(ref _cts, cts); previous?.Cancel(); previous?.Dispose(); _loading = true;
-        try { var response = await ApiClient.GetSheltersAsync(_query, _operational, _moderation, _sort, _page, 20, cts.Token); if (ReferenceEquals(_cts, cts)) { _items = response.Results.ToList(); _totalPages = response.TotalPages; } }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
-        finally { if (ReferenceEquals(_cts, cts)) _loading = false; }
+        var cancellation = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref _cts, cancellation);
+        previous?.Cancel();
+        previous?.Dispose();
+        _loading = true;
+
+        try
+        {
+            PagedResult<ShelterSummaryResponse> response;
+            if (string.IsNullOrWhiteSpace(_query) &&
+                _operational is null &&
+                _moderation is null &&
+                _sort == ShelterSortOption.Newest)
+            {
+                response = await ApiClient.GetAllSheltersAsync(
+                    _page,
+                    20,
+                    cancellation.Token);
+            }
+            else
+            {
+                var request = new PagedRequest<ShelterSearchFilter>
+                {
+                    PageNumber = _page,
+                    PageSize = 20,
+                    Filter = new ShelterSearchFilter
+                    {
+                        EarthquakeId = null,
+                        SearchText = _query,
+                        OperationalStatus = _operational,
+                        ModerationStatus = _moderation,
+                        Sort = _sort,
+                    },
+                };
+                response = await ApiClient.SearchSheltersAsync(
+                    request,
+                    cancellation.Token);
+            }
+
+            if (ReferenceEquals(_cts, cancellation))
+            {
+                _items = response.Results.ToList();
+                _totalPages = response.TotalPages;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_cts, cancellation))
+            {
+                _loading = false;
+            }
+        }
     }
-    private static string StatusText(ShelterOperationalStatus status) => status switch { ShelterOperationalStatus.Open => "Abierto", ShelterOperationalStatus.Full => "Lleno", ShelterOperationalStatus.Closed => "Cerrado", _ => status.ToString() };
-    private static Color StatusColor(ShelterOperationalStatus status) => status switch { ShelterOperationalStatus.Open => Color.Success, ShelterOperationalStatus.Full => Color.Warning, _ => Color.Default };
-    public void Dispose() { _cts?.Cancel(); _cts?.Dispose(); }
+
+    private static string StatusText(ShelterOperationalStatus status) =>
+        status switch
+        {
+            ShelterOperationalStatus.Open => "Abierto",
+            ShelterOperationalStatus.Full => "Lleno",
+            ShelterOperationalStatus.Closed => "Cerrado",
+            _ => status.ToString(),
+        };
+
+    private static Color StatusColor(ShelterOperationalStatus status) =>
+        status switch
+        {
+            ShelterOperationalStatus.Open => Color.Success,
+            ShelterOperationalStatus.Full => Color.Warning,
+            _ => Color.Default,
+        };
+
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
 }

@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
@@ -6,10 +7,13 @@ using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Pagination;
 using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Text;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
@@ -20,7 +24,9 @@ public class HelpRequestsController(
     IHelpRequestService helpRequests,
     IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IValidator<PaginationRequest> paginationValidator,
+    IValidator<PagedRequest<HelpRequestSearchFilter>> searchValidator) : ControllerBase
 {
     private const HelpNeedCategory AllCategories = HelpNeedCategory.Personnel | HelpNeedCategory.Medical |
         HelpNeedCategory.RescueEquipment | HelpNeedCategory.Machinery | HelpNeedCategory.Transportation |
@@ -28,37 +34,80 @@ public class HelpRequestsController(
         HelpNeedCategory.Security | HelpNeedCategory.Other;
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] string? query = null,
-        [FromQuery] HelpRequestPriority? priority = null, [FromQuery] HelpNeedCategory? category = null,
-        [FromQuery] HelpRequestStatus? status = null, [FromQuery] HelpRequestModerationStatus? moderationStatus = null,
-        [FromQuery] HelpRequestSortOption sort = HelpRequestSortOption.HighestPriority,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<PagedResult<HelpRequestSummaryResponse>>> List(
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
-            (priority is not null && !Enum.IsDefined(priority.Value)) ||
-            (status is not null && !Enum.IsDefined(status.Value)) ||
-            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
-            (category is not null && !ValidCategories(category.Value)))
+        var validation = await paginationValidator.ValidateAsync(pagination, cancellationToken);
+        if (!validation.IsValid)
         {
-            return BadRequest("Invalid help-request query parameters.");
+            return BadRequest(validation.ToProblemDetails("Invalid pagination parameters."));
         }
 
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(null, cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
         var criteria = new HelpRequestQueryCriteria(
-            earthquake?.Id,
-            query,
-            priority,
-            category,
-            status,
-            moderationStatus,
-            sort);
+            earthquakeId.Value,
+            null,
+            null,
+            null,
+            null,
+            null,
+            HelpRequestSortOption.HighestPriority);
         var ordered = helpRequests.GetOrderedQuery(criteria);
-        var projected = ordered.SelectOrdered(request => request.ToSummaryResponse());
-        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
+        var projected = ordered.SelectOrdered(item => item.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            pagination.Page,
+            pagination.PageSize,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("search")]
+    public async Task<ActionResult<PagedResult<HelpRequestSummaryResponse>>> Search(
+        [FromBody] PagedRequest<HelpRequestSearchFilter> request,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await searchValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails("Invalid help-request search."));
+        }
+
+        var filter = request.Filter!;
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(
+            filter.EarthquakeId,
+            cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
+        var criteria = new HelpRequestQueryCriteria(
+            earthquakeId.Value,
+            filter.SearchText,
+            filter.Priority,
+            filter.Category,
+            filter.Status,
+            filter.ModerationStatus,
+            filter.Sort);
+        var ordered = helpRequests.GetOrderedQuery(criteria);
+        var projected = ordered.SelectOrdered(item => item.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<HelpRequestResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var request = await helpRequests.GetPublicAsync(id, cancellationToken);
         if (request is null)
@@ -70,7 +119,7 @@ public class HelpRequestsController(
     }
 
     [HttpGet("{id:guid}/comments")]
-    public async Task<IActionResult> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<PagedResult<HelpRequestCommentResponse>>> Comments(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
         if (!PaginationParameters.IsValid(page, pageSize))
         {
@@ -87,7 +136,7 @@ public class HelpRequestsController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateHelpRequestRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CreateHelpRequestResponse>> Create(CreateHelpRequestRequest request, CancellationToken cancellationToken)
     {
         var error = Validate(request);
         if (error is not null)
@@ -115,7 +164,7 @@ public class HelpRequestsController(
     }
 
     [HttpPost("management/lookup")]
-    public async Task<IActionResult> LookupManagementCode(HelpRequestManagementCodeRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<HelpRequestResponse>> LookupManagementCode(HelpRequestManagementCodeRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.ManagementCode))
         {
@@ -127,7 +176,7 @@ public class HelpRequestsController(
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, UpdateHelpRequestRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<HelpRequestResponse>> Update(Guid id, UpdateHelpRequestRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
         if (helpRequest is null)
@@ -149,7 +198,7 @@ public class HelpRequestsController(
     }
 
     [HttpPatch("{id:guid}/status")]
-    public async Task<IActionResult> Status(Guid id, UpdateHelpRequestStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<HelpRequestResponse>> Status(Guid id, UpdateHelpRequestStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         if (!Enum.IsDefined(request.Status))
         {
@@ -171,7 +220,7 @@ public class HelpRequestsController(
     }
 
     [HttpPost("{id:guid}/comments")]
-    public async Task<IActionResult> CreateComment(Guid id, CreateHelpRequestCommentRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<HelpRequestCommentResponse>> CreateComment(Guid id, CreateHelpRequestCommentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
         {
@@ -207,7 +256,7 @@ public class HelpRequestsController(
     }
 
     [HttpPatch("{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> HideComment(Guid id, Guid commentId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult> HideComment(Guid id, Guid commentId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var helpRequest = await helpRequests.GetForUpdateAsync(id, cancellationToken);
         if (helpRequest is null)
@@ -226,7 +275,7 @@ public class HelpRequestsController(
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
-    public async Task<IActionResult> Abuse(Guid id, HelpRequestAbuseReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> Abuse(Guid id, HelpRequestAbuseReportRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 200)
         {
@@ -259,7 +308,7 @@ public class HelpRequestsController(
 
 
     [HttpGet("moderation/pending")]
-    public async Task<IActionResult> Pending(
+    public async Task<ActionResult<PagedResult<HelpRequestSummaryResponse>>> Pending(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
@@ -280,7 +329,7 @@ public class HelpRequestsController(
     }
 
     [HttpPost("moderation/official")]
-    public async Task<IActionResult> CreateOfficial(
+    public async Task<ActionResult<HelpRequestResponse>> CreateOfficial(
         CreateHelpRequestRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
@@ -312,7 +361,7 @@ public class HelpRequestsController(
     }
 
     [HttpPut("moderation/{id:guid}")]
-    public async Task<IActionResult> ModeratorUpdate(
+    public async Task<ActionResult<HelpRequestResponse>> ModeratorUpdate(
         Guid id,
         UpdateHelpRequestRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -341,7 +390,7 @@ public class HelpRequestsController(
     }
 
     [HttpPatch("moderation/{id:guid}")]
-    public async Task<IActionResult> Moderate(
+    public async Task<ActionResult<HelpRequestResponse>> Moderate(
         Guid id,
         UpdateHelpRequestModerationRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -368,7 +417,7 @@ public class HelpRequestsController(
     }
 
     [HttpPatch("moderation/{id:guid}/status")]
-    public async Task<IActionResult> ModeratorStatus(
+    public async Task<ActionResult<HelpRequestResponse>> ModeratorStatus(
         Guid id,
         UpdateHelpRequestStatusRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -392,7 +441,7 @@ public class HelpRequestsController(
     }
 
     [HttpPatch("moderation/{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> ModerateComment(
+    public async Task<ActionResult> ModerateComment(
         Guid id,
         Guid commentId,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,

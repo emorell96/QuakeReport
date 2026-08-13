@@ -8,9 +8,9 @@ using StorageGenerics.Core.Contracts;
 namespace QuakeReport.ApiService.MissingPeople;
 
 public sealed record MissingPersonQueryCriteria(
-    Guid? EarthquakeId,
+    Guid EarthquakeId,
     string? SearchText,
-    MissingPersonStatus Status,
+    MissingPersonStatus? Status,
     MissingPersonSortOption Sort);
 
 public interface IMissingPersonService
@@ -75,9 +75,12 @@ public sealed class MissingPersonService(
         var query = people.QueryAll()
             .AsNoTracking()
             .Include(person => person.Locations)
-            .Where(person =>
-                person.EarthquakeId == criteria.EarthquakeId &&
-                person.Status == criteria.Status);
+            .Where(person => person.EarthquakeId == criteria.EarthquakeId);
+
+        if (criteria.Status is not null)
+        {
+            query = query.Where(person => person.Status == criteria.Status);
+        }
 
         if (!string.IsNullOrWhiteSpace(criteria.SearchText))
         {

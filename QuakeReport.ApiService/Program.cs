@@ -1,25 +1,28 @@
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
 using QuakeReport.ApiService.BloodDonationCenters;
 using QuakeReport.ApiService.CollectionPoints;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.GeocodingReview;
 using QuakeReport.ApiService.HelpRequests;
+using QuakeReport.ApiService.Ingestion;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
-using QuakeReport.ApiService.Ingestion;
+using QuakeReport.ApiService.Persistence;
 using QuakeReport.ApiService.Reports;
 using QuakeReport.ApiService.Security;
-using QuakeReport.ApiService.Persistence;
 using QuakeReport.ApiService.Shelters;
+using QuakeReport.ApiService.Validation;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data;
-using Microsoft.EntityFrameworkCore;
-using QuakeReport.Geospatial;
 using QuakeReport.Data.Geospatial;
-using Scalar.AspNetCore;
-using System.Security.Cryptography;
-using System.Text;
 using QuakeReport.Data.Models;
+using QuakeReport.Geospatial;
+using Scalar.AspNetCore;
 using StorageGenerics.Core.Contracts;
 using StorageGenerics.Services;
+using System.Security.Cryptography;
+using System.Text;
 
 PostGisTypeMapping.Configure();
 var builder = WebApplication.CreateBuilder(args);
@@ -71,6 +74,46 @@ AddQueryableRepository<HelpRequestComment>(builder.Services);
 AddQueryableRepository<MissingPerson>(builder.Services);
 AddQueryableRepository<MissingPersonTip>(builder.Services);
 AddQueryableRepository<Shelter>(builder.Services);
+
+builder.Services.AddScoped<IValidator<PaginationRequest>, PaginationRequestValidator>();
+builder.Services.AddScoped<IValidator<GeoPointQuery>, GeoPointQueryValidator>();
+builder.Services.AddScoped<
+    IValidator<BloodDonationCenterSearchFilter>,
+    BloodDonationCenterSearchFilterValidator>();
+builder.Services.AddScoped<
+    IValidator<CollectionPointSearchFilter>,
+    CollectionPointSearchFilterValidator>();
+builder.Services.AddScoped<
+    IValidator<ShelterSearchFilter>,
+    ShelterSearchFilterValidator>();
+builder.Services.AddScoped<
+    IValidator<HelpRequestSearchFilter>,
+    HelpRequestSearchFilterValidator>();
+builder.Services.AddScoped<
+    IValidator<MissingPersonSearchFilter>,
+    MissingPersonSearchFilterValidator>();
+builder.Services.AddScoped<
+    IValidator<DamageReportSearchFilter>,
+    DamageReportSearchFilterValidator>();
+builder.Services.AddScoped<
+    IValidator<PagedRequest<BloodDonationCenterSearchFilter>>,
+    BloodDonationCenterSearchRequestValidator>();
+builder.Services.AddScoped<
+    IValidator<PagedRequest<CollectionPointSearchFilter>>,
+    CollectionPointSearchRequestValidator>();
+builder.Services.AddScoped<
+    IValidator<PagedRequest<ShelterSearchFilter>>,
+    ShelterSearchRequestValidator>();
+builder.Services.AddScoped<
+    IValidator<PagedRequest<HelpRequestSearchFilter>>,
+    HelpRequestSearchRequestValidator>();
+builder.Services.AddScoped<
+    IValidator<PagedRequest<MissingPersonSearchFilter>>,
+    MissingPersonSearchRequestValidator>();
+builder.Services.AddScoped<
+    IValidator<PagedRequest<DamageReportSearchFilter>>,
+    DamageReportSearchRequestValidator>();
+
 builder.AddAzureBlobServiceClient("blobs");
 builder.Services.AddHttpClient("turnstile", client =>
 {

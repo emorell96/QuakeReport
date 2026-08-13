@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
@@ -6,10 +7,13 @@ using QuakeReport.ApiService.Pagination;
 using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Shelters;
 using QuakeReport.ApiService.Text;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
@@ -20,53 +24,93 @@ public class SheltersController(
     IShelterService shelters,
     IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IValidator<PaginationRequest> paginationValidator,
+    IValidator<PagedRequest<ShelterSearchFilter>> searchValidator) : ControllerBase
 {
 
     [HttpGet]
-    public async Task<IActionResult> List(
-        [FromQuery] string? query = null,
-        [FromQuery] ShelterOperationalStatus? operationalStatus = null,
-        [FromQuery] ShelterModerationStatus? moderationStatus = null,
-        [FromQuery] ShelterSortOption sort = ShelterSortOption.Newest,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
-        CancellationToken cancellationToken = default,
-        [FromQuery] double? latitude = null,
-        [FromQuery] double? longitude = null)
+    public async Task<ActionResult<PagedResult<ShelterSummaryResponse>>> List(
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
-            (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
-            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
-            (latitude.HasValue != longitude.HasValue) ||
-            (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
+        var validation = await paginationValidator.ValidateAsync(pagination, cancellationToken);
+        if (!validation.IsValid)
         {
-            return BadRequest("Invalid shelter query parameters.");
+            return BadRequest(validation.ToProblemDetails("Invalid pagination parameters."));
         }
 
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(null, cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
         var criteria = new ShelterQueryCriteria(
-            earthquake?.Id,
-            query,
-            operationalStatus,
-            moderationStatus,
-            sort,
-            latitude,
-            longitude);
+            earthquakeId.Value,
+            null,
+            null,
+            null,
+            ShelterSortOption.Newest,
+            null,
+            null);
         var ordered = shelters.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(shelter => shelter.ToSummaryResponse());
-        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
+        var result = await projected.ToPagedResultAsync(
+            pagination.Page,
+            pagination.PageSize,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("search")]
+    public async Task<ActionResult<PagedResult<ShelterSummaryResponse>>> Search(
+        [FromBody] PagedRequest<ShelterSearchFilter> request,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await searchValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails("Invalid shelter search."));
+        }
+
+        var filter = request.Filter!;
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(
+            filter.EarthquakeId,
+            cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
+        var criteria = new ShelterQueryCriteria(
+            earthquakeId.Value,
+            filter.SearchText,
+            filter.OperationalStatus,
+            filter.ModerationStatus,
+            filter.Sort,
+            filter.CenterPoint?.Latitude,
+            filter.CenterPoint?.Longitude);
+        var ordered = shelters.GetOrderedQuery(criteria);
+        var projected = ordered.SelectOrdered(shelter => shelter.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<ShelterResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var shelter = await shelters.GetPublicAsync(id, cancellationToken);
         return shelter is null ? NotFound() : Ok(shelter.ToResponse());
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateShelterRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CreateShelterResponse>> Create(CreateShelterRequest request, CancellationToken cancellationToken)
     {
         var validation = Validate(request);
         if (validation is not null)
@@ -95,7 +139,7 @@ public class SheltersController(
     }
 
     [HttpPost("management/lookup")]
-    public async Task<IActionResult> LookupManagementCode(ShelterManagementCodeRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<ShelterResponse>> LookupManagementCode(ShelterManagementCodeRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.ManagementCode))
         {
@@ -107,7 +151,7 @@ public class SheltersController(
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, UpdateShelterRequest request,
+    public async Task<ActionResult<ShelterResponse>> Update(Guid id, UpdateShelterRequest request,
         [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var shelter = await shelters.GetForUpdateAsync(id, cancellationToken);
@@ -130,7 +174,7 @@ public class SheltersController(
     }
 
     [HttpPatch("{id:guid}/status")]
-    public async Task<IActionResult> Status(Guid id, UpdateShelterStatusRequest request,
+    public async Task<ActionResult<ShelterResponse>> Status(Guid id, UpdateShelterStatusRequest request,
         [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         if (!Enum.IsDefined(request.Status))
@@ -153,7 +197,7 @@ public class SheltersController(
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
-    public async Task<IActionResult> Abuse(Guid id, ShelterAbuseReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> Abuse(Guid id, ShelterAbuseReportRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Length > 200)
         {
@@ -185,7 +229,7 @@ public class SheltersController(
     }
 
     [HttpGet("moderation/pending")]
-    public async Task<IActionResult> Pending([FromHeader(Name = "X-Moderation-Service-Key")] string? key,
+    public async Task<ActionResult<PagedResult<ShelterSummaryResponse>>> Pending([FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
         if (!moderationKey.IsValid(key))
@@ -202,7 +246,7 @@ public class SheltersController(
     }
 
     [HttpPost("moderation/official")]
-    public async Task<IActionResult> CreateOfficial(CreateShelterRequest request,
+    public async Task<ActionResult<ShelterResponse>> CreateOfficial(CreateShelterRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
@@ -229,7 +273,7 @@ public class SheltersController(
     }
 
     [HttpPut("moderation/{id:guid}")]
-    public async Task<IActionResult> ModeratorUpdate(Guid id, UpdateShelterRequest request,
+    public async Task<ActionResult<ShelterResponse>> ModeratorUpdate(Guid id, UpdateShelterRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key, CancellationToken cancellationToken)
     {
         if (!moderationKey.IsValid(key))
@@ -252,7 +296,7 @@ public class SheltersController(
     }
 
     [HttpPatch("moderation/{id:guid}")]
-    public async Task<IActionResult> Moderate(Guid id, UpdateShelterModerationRequest request,
+    public async Task<ActionResult<ShelterResponse>> Moderate(Guid id, UpdateShelterModerationRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
         CancellationToken cancellationToken)
@@ -279,7 +323,7 @@ public class SheltersController(
     }
 
     [HttpPatch("moderation/{id:guid}/status")]
-    public async Task<IActionResult> ModeratorStatus(Guid id, UpdateShelterStatusRequest request,
+    public async Task<ActionResult<ShelterResponse>> ModeratorStatus(Guid id, UpdateShelterStatusRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key, CancellationToken cancellationToken)
     {
         if (!moderationKey.IsValid(key))

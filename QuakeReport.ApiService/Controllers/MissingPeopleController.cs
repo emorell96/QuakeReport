@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.Dtos;
 using QuakeReport.ApiService.Earthquakes;
@@ -5,10 +6,13 @@ using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Pagination;
 using QuakeReport.ApiService.Text;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Models;
 using QuakeReport.Data.Geospatial;
+using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
 namespace QuakeReport.ApiService.Controllers;
@@ -20,40 +24,88 @@ public class MissingPeopleController(
     IActiveEarthquakeService earthquakes,
     MissingPersonSecurity security,
     ITurnstileValidator turnstile,
-    IMissingPersonPhotoStorage photos) : ControllerBase
+    IMissingPersonPhotoStorage photos,
+    IValidator<PaginationRequest> paginationValidator,
+    IValidator<PagedRequest<MissingPersonSearchFilter>> searchValidator) : ControllerBase
 {
     private const long MaxPhotoSize = 10 * 1024 * 1024;
 
     [HttpGet]
-    public async Task<IActionResult> List(
-        [FromQuery] string? query = null,
-        [FromQuery] MissingPersonStatus status = MissingPersonStatus.Missing,
-        [FromQuery] MissingPersonSortOption sort = MissingPersonSortOption.Newest,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
+    public async Task<ActionResult<PagedResult<MissingPersonSummaryResponse>>> List(
+        [FromQuery] PaginationRequest pagination,
         CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(status) || !Enum.IsDefined(sort))
+        var validation = await paginationValidator.ValidateAsync(pagination, cancellationToken);
+        if (!validation.IsValid)
         {
-            return BadRequest("Invalid missing-person query parameters.");
+            return BadRequest(validation.ToProblemDetails("Invalid pagination parameters."));
         }
 
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
-        var criteria = new MissingPersonQueryCriteria(earthquake?.Id, query, status, sort);
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(null, cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
+        var criteria = new MissingPersonQueryCriteria(
+            earthquakeId.Value,
+            null,
+            null,
+            MissingPersonSortOption.Newest);
         var ordered = missingPeople.GetOrderedQuery(criteria);
         var projected = ordered.SelectOrdered(person => person.ToSummaryResponse());
-        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
+        var result = await projected.ToPagedResultAsync(
+            pagination.Page,
+            pagination.PageSize,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpPost("search")]
+    public async Task<ActionResult<PagedResult<MissingPersonSummaryResponse>>> Search(
+        [FromBody] PagedRequest<MissingPersonSearchFilter> request,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await searchValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails("Invalid missing-person search."));
+        }
+
+        var filter = request.Filter!;
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(
+            filter.EarthquakeId,
+            cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
+        var criteria = new MissingPersonQueryCriteria(
+            earthquakeId.Value,
+            filter.SearchText,
+            filter.Status,
+            filter.Sort);
+        var ordered = missingPeople.GetOrderedQuery(criteria);
+        var projected = ordered.SelectOrdered(person => person.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var person = await missingPeople.GetPublicAsync(id, cancellationToken);
         return person is null ? NotFound() : Ok(person.ToResponse());
     }
 
     [HttpGet("{id:guid}/tips")]
-    public async Task<IActionResult> Tips(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
+    public async Task<ActionResult<PagedResult<MissingPersonTipResponse>>> Tips(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = PaginationParameters.DefaultPageSize, CancellationToken cancellationToken = default)
     {
         if (!PaginationParameters.IsValid(page, pageSize))
         {
@@ -69,7 +121,7 @@ public class MissingPeopleController(
     }
 
     [HttpPost("management/lookup")]
-    public async Task<IActionResult> LookupByManagementCode(ManagementCodeRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonResponse>> LookupByManagementCode(ManagementCodeRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.ManagementCode))
         {
@@ -81,7 +133,7 @@ public class MissingPeopleController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateMissingPersonRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CreateMissingPersonResponse>> Create(CreateMissingPersonRequest request, CancellationToken cancellationToken)
     {
         var validation = ValidateCreate(request);
         if (validation is not null)
@@ -142,7 +194,7 @@ public class MissingPeopleController(
     }
 
     [HttpPost("lookup-by-identification")]
-    public async Task<IActionResult> Lookup(IdentificationLookupRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonResponse>> Lookup(IdentificationLookupRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.IdentificationNumber) || !Enum.IsDefined(request.DocumentType))
         {
@@ -172,7 +224,7 @@ public class MissingPeopleController(
     }
 
     [HttpPost("{id:guid}/tips")]
-    public async Task<IActionResult> CreateTip(Guid id, CreateMissingPersonTipRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonTipResponse>> CreateTip(Guid id, CreateMissingPersonTipRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
         {
@@ -209,7 +261,7 @@ public class MissingPeopleController(
 
     [HttpPost("{id:guid}/photo")]
     [RequestSizeLimit(MaxPhotoSize)]
-    public async Task<IActionResult> UploadPhoto(Guid id, [FromHeader(Name = "X-Management-Code")] string? code, IFormFile file, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonPhotoResponse>> UploadPhoto(Guid id, [FromHeader(Name = "X-Management-Code")] string? code, IFormFile file, CancellationToken cancellationToken)
     {
         var person = await missingPeople.GetForUpdateAsync(id, includeLocations: false, cancellationToken);
         if (person is null)
@@ -230,11 +282,11 @@ public class MissingPeopleController(
         person.PhotoUrl = await photos.UploadAsync(id, extension, stream, file.ContentType, cancellationToken);
         person.UpdatedAt = DateTimeOffset.UtcNow;
         await missingPeople.PersistUpdateAsync(person, cancellationToken);
-        return Ok(new { photoUrl = person.PhotoUrl });
+        return Ok(new MissingPersonPhotoResponse(person.PhotoUrl));
     }
 
     [HttpPatch("{id:guid}/status")]
-    public async Task<IActionResult> UpdateStatus(Guid id, UpdateMissingPersonStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonResponse>> UpdateStatus(Guid id, UpdateMissingPersonStatusRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var person = await missingPeople.GetForUpdateAsync(id, includeLocations: false, cancellationToken);
         if (person is null)
@@ -256,7 +308,7 @@ public class MissingPeopleController(
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(Guid id, UpdateMissingPersonRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<MissingPersonResponse>> Update(Guid id, UpdateMissingPersonRequest request, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.FullName) || string.IsNullOrWhiteSpace(request.Description) || request.Locations is null || request.Locations.Count == 0)
         {
@@ -294,7 +346,7 @@ public class MissingPeopleController(
     }
 
     [HttpGet("{id:guid}/management/tips")]
-    public async Task<IActionResult> PrivateTips(Guid id, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult<IEnumerable<PrivateMissingPersonTipResponse>>> PrivateTips(Guid id, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var person = await missingPeople.GetForAuthorizationAsync(id, cancellationToken);
         if (person is null)
@@ -310,7 +362,7 @@ public class MissingPeopleController(
     }
 
     [HttpPatch("{id:guid}/tips/{tipId:guid}/visibility")]
-    public async Task<IActionResult> HideTip(Guid id, Guid tipId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
+    public async Task<ActionResult> HideTip(Guid id, Guid tipId, [FromHeader(Name = "X-Management-Code")] string? code, CancellationToken cancellationToken)
     {
         var person = await missingPeople.GetForAuthorizationAsync(id, cancellationToken);
         if (person is null)
@@ -329,7 +381,7 @@ public class MissingPeopleController(
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
-    public async Task<IActionResult> Abuse(Guid id, AbuseReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> Abuse(Guid id, AbuseReportRequest request, CancellationToken cancellationToken)
     {
         var challenge = await turnstile.ValidateAsync(request.TurnstileToken, cancellationToken);
         if (challenge.ProviderUnavailable)

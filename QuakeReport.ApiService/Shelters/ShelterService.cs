@@ -9,7 +9,7 @@ using StorageGenerics.Core.Contracts;
 namespace QuakeReport.ApiService.Shelters;
 
 public sealed record ShelterQueryCriteria(
-    Guid? EarthquakeId,
+    Guid EarthquakeId,
     string? SearchText,
     ShelterOperationalStatus? OperationalStatus,
     ShelterModerationStatus? ModerationStatus,
@@ -56,11 +56,6 @@ public sealed class ShelterService(
         {
             query = query.Where(shelter => shelter.OperationalStatus == criteria.OperationalStatus);
         }
-        else
-        {
-            query = query.Where(shelter => shelter.OperationalStatus != ShelterOperationalStatus.Closed);
-        }
-
         if (criteria.ModerationStatus is not null)
         {
             query = query.Where(shelter => shelter.ModerationStatus == criteria.ModerationStatus);

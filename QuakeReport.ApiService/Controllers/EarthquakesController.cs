@@ -12,7 +12,7 @@ public class EarthquakesController(IActiveEarthquakeService activeEarthquakeServ
     [HttpGet("active")]
     [ProducesResponseType<EarthquakeResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetActive(CancellationToken cancellationToken)
+    public async Task<ActionResult<EarthquakeResponse>> GetActive(CancellationToken cancellationToken)
     {
         var earthquake = await activeEarthquakeService.GetActiveEarthquakeAsync(cancellationToken);
         if (earthquake is null)

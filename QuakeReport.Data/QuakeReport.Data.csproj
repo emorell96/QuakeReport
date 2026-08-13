@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\QuakeReport.Contracts\QuakeReport.Contracts.csproj" />
+    <ProjectReference Include="..\QuakeReport.Core\QuakeReport.Core.csproj" />
   </ItemGroup>
 
 </Project>

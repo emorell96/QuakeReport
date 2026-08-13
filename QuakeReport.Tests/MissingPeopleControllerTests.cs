@@ -4,8 +4,10 @@ using QuakeReport.ApiService.Controllers;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.Media;
 using QuakeReport.ApiService.MissingPeople;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using StorageGenerics.Core.Models;
@@ -35,18 +37,22 @@ public class MissingPeopleControllerTests
     }
 
     [TestMethod]
-    public async Task ListDefaultsToMissingAndFiltersBeforePagination()
+    public async Task ListIncludesEveryPublicStatus()
     {
         using var db = TestDb.Create();
         var earthquakeId = QuakeReportDbContext.ColombiaEarthquakeId;
         db.MissingPeople.AddRange(Person(earthquakeId, "Missing one", MissingPersonStatus.Missing), Person(earthquakeId, "Found one", MissingPersonStatus.Found));
         await db.SaveChangesAsync();
 
-        var result = await CreateController(db).List(page: 1, pageSize: 1, cancellationToken: CancellationToken.None);
+        var result = await CreateController(db).List(
+            new PaginationRequest { Page = 1, PageSize = 20 },
+            CancellationToken.None);
         var page = TestAssert.InstanceOf<PagedResult<MissingPersonSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
 
-        Assert.AreEqual(1, page.TotalMatches);
-        Assert.AreEqual("Missing one", page.Results.Single().FullName);
+        Assert.AreEqual(2, page.TotalMatches);
+        CollectionAssert.AreEquivalent(
+            new[] { "Missing one", "Found one" },
+            page.Results.Select(person => person.FullName).ToArray());
     }
 
     [TestMethod]
@@ -88,7 +94,9 @@ public class MissingPeopleControllerTests
             new ActiveEarthquakeService(db),
             new MissingPersonSecurity(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["MissingPeople:IdHmacKey"] = "test-secret" }).Build()),
             new AlwaysTurnstile(),
-            new NoopPhotoStorage());
+            new NoopPhotoStorage(),
+            new PaginationRequestValidator(),
+            new MissingPersonSearchRequestValidator(new MissingPersonSearchFilterValidator()));
 
     private static CreateMissingPersonRequest Request(string name, string? document) =>
         new(name, null, "30", document is null ? null : IdentificationDocumentType.ColombianCitizenId, document, "Descripción", null, null, DateTimeOffset.UtcNow.AddHours(-1), [new("Bogotá", null, null, null)], true, "token");

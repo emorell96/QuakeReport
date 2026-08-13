@@ -293,13 +293,35 @@ else
         _loading = true;
         try
         {
+            var reportsRequest = new PagedRequest<DamageReportSearchFilter>
+            {
+                PageNumber = _page,
+                PageSize = PageSize,
+                Filter = new DamageReportSearchFilter
+                {
+                    EarthquakeId = null,
+                    Severity = _severityFilter,
+                    Sort = _sortOption,
+                },
+            };
+            var sheltersRequest = new PagedRequest<ShelterSearchFilter>
+            {
+                PageNumber = 1,
+                PageSize = 6,
+                Filter = new ShelterSearchFilter
+                {
+                    EarthquakeId = null,
+                    OperationalStatus = ShelterOperationalStatus.Open,
+                },
+            };
+
             var earthquakeTask = ApiClient.GetActiveEarthquakeAsync(cancellation.Token);
-            var reportsTask = ApiClient.GetReportsAsync(_page, PageSize, _severityFilter, _sortOption, cancellation.Token);
-            var missingPeopleTask = ApiClient.GetMissingPeopleAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
-            var collectionPointsTask = ApiClient.GetCollectionPointsAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
-            var sheltersTask = ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, page: 1, pageSize: 6, cancellationToken: cancellation.Token);
-            var helpRequestsTask = ApiClient.GetHelpRequestsAsync(page: 1, pageSize: 6, sort: HelpRequestSortOption.HighestPriority, cancellationToken: cancellation.Token);
-            var bloodDonationTask = ApiClient.GetBloodDonationCentersAsync(page: 1, pageSize: 6, cancellationToken: cancellation.Token);
+            var reportsTask = ApiClient.SearchReportsAsync(reportsRequest, cancellation.Token);
+            var missingPeopleTask = ApiClient.GetAllMissingPeopleAsync(1, 6, cancellation.Token);
+            var collectionPointsTask = ApiClient.GetAllCollectionPointsAsync(1, 6, cancellation.Token);
+            var sheltersTask = ApiClient.SearchSheltersAsync(sheltersRequest, cancellation.Token);
+            var helpRequestsTask = ApiClient.GetAllHelpRequestsAsync(1, 6, cancellation.Token);
+            var bloodDonationTask = ApiClient.GetAllBloodDonationCentersAsync(1, 6, cancellation.Token);
 
             await Task.WhenAll(earthquakeTask, reportsTask, missingPeopleTask, sheltersTask, collectionPointsTask, helpRequestsTask, bloodDonationTask);
             if (!ReferenceEquals(_loadCancellation, cancellation))
@@ -373,11 +395,17 @@ else
                 return;
             }
 
-            string? destination = kind switch
+            var centerPoint = new GeoPointQuery
             {
-                NearestKind.BloodDonationCenter => (await ApiClient.GetBloodDonationCentersAsync(pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Results.FirstOrDefault() is { } center ? $"/donacion-sangre/{center.Id}" : null,
-                NearestKind.Shelter => (await ApiClient.GetSheltersAsync(operationalStatus: ShelterOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Results.FirstOrDefault() is { } shelter ? $"/refugios/{shelter.Id}" : null,
-                _ => (await ApiClient.GetCollectionPointsAsync(operationalStatus: CollectionPointOperationalStatus.Open, pageSize: 1, latitude: position.Latitude, longitude: position.Longitude)).Results.FirstOrDefault() is { } point ? $"/collection-points/{point.Id}" : null,
+                Latitude = position.Latitude,
+                Longitude = position.Longitude,
+            };
+            var destination = kind switch
+            {
+                NearestKind.BloodDonationCenter => await FindNearestBloodDonationCenterAsync(
+                    centerPoint),
+                NearestKind.Shelter => await FindNearestShelterAsync(centerPoint),
+                _ => await FindNearestCollectionPointAsync(centerPoint),
             };
 
             if (destination is null)
@@ -393,6 +421,62 @@ else
         {
             _findingNearest = null;
         }
+    }
+
+    private async Task<string?> FindNearestBloodDonationCenterAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<BloodDonationCenterSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new BloodDonationCenterSearchFilter
+            {
+                EarthquakeId = null,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchBloodDonationCentersAsync(request);
+        return result.Results.FirstOrDefault() is { } center
+            ? $"/donacion-sangre/{center.Id}"
+            : null;
+    }
+
+    private async Task<string?> FindNearestShelterAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<ShelterSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new ShelterSearchFilter
+            {
+                EarthquakeId = null,
+                OperationalStatus = ShelterOperationalStatus.Open,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchSheltersAsync(request);
+        return result.Results.FirstOrDefault() is { } shelter
+            ? $"/refugios/{shelter.Id}"
+            : null;
+    }
+
+    private async Task<string?> FindNearestCollectionPointAsync(GeoPointQuery centerPoint)
+    {
+        var request = new PagedRequest<CollectionPointSearchFilter>
+        {
+            PageNumber = 1,
+            PageSize = 1,
+            Filter = new CollectionPointSearchFilter
+            {
+                EarthquakeId = null,
+                OperationalStatus = CollectionPointOperationalStatus.Open,
+                CenterPoint = centerPoint,
+            },
+        };
+        var result = await ApiClient.SearchCollectionPointsAsync(request);
+        return result.Results.FirstOrDefault() is { } point
+            ? $"/collection-points/{point.Id}"
+            : null;
     }
 
     private enum NearestKind { BloodDonationCenter, Shelter, CollectionPoint }

@@ -6,8 +6,10 @@ using QuakeReport.ApiService.Shelters;
 using QuakeReport.ApiService.Earthquakes;
 using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Security;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data;
 using QuakeReport.Data.Models;
 using StorageGenerics.Core.Models;
@@ -35,7 +37,7 @@ public class SheltersControllerTests
     }
 
     [TestMethod]
-    public async Task ListIncludesPendingButExcludesRejectedAndClosedByDefault()
+    public async Task ListIncludesPendingAndClosedButExcludesRejected()
     {
         using var db = TestDb.Create();
         db.Shelters.AddRange(
@@ -44,11 +46,15 @@ public class SheltersControllerTests
             TestShelter("Cerrado", ShelterModerationStatus.Approved, ShelterOperationalStatus.Closed));
         await db.SaveChangesAsync();
 
-        var result = await Controller(db).List(page: 1, pageSize: 20, cancellationToken: CancellationToken.None);
+        var result = await Controller(db).List(
+            new PaginationRequest { Page = 1, PageSize = 20 },
+            CancellationToken.None);
         var response = TestAssert.InstanceOf<PagedResult<ShelterSummaryResponse>>(TestAssert.InstanceOf<OkObjectResult>(result).Value);
 
-        Assert.AreEqual(1, response.TotalMatches);
-        Assert.AreEqual("Pendiente", response.Results.Single().Name);
+        Assert.AreEqual(2, response.TotalMatches);
+        CollectionAssert.AreEquivalent(
+            new[] { "Pendiente", "Cerrado" },
+            response.Results.Select(shelter => shelter.Name).ToArray());
     }
 
     [TestMethod]
@@ -99,7 +105,10 @@ public class SheltersControllerTests
         new ShelterService(db, TestRepository.Create<Shelter>(db)),
         new ActiveEarthquakeService(db),
         new AlwaysTurnstile(),
-        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()));
+        new ModerationKeyValidator(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Moderation:ApiKey"] = "moderator-secret" }).Build()),
+        new PaginationRequestValidator(),
+        new ShelterSearchRequestValidator(
+            new ShelterSearchFilterValidator(new GeoPointQueryValidator())));
 
     private static CreateShelterRequest CreateRequest(string name) =>
         new(name, null, "Calle 1", 3.45, -76.53, "Descripción", "Abierto todo el día", null, null, null, null, true, "token");

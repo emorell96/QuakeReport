@@ -9,7 +9,7 @@ using StorageGenerics.Core.Contracts;
 namespace QuakeReport.ApiService.BloodDonationCenters;
 
 public sealed record BloodDonationCenterQueryCriteria(
-    Guid? EarthquakeId,
+    Guid EarthquakeId,
     string? SearchText,
     BloodDonationCenterType? CenterType,
     BloodDonationOperationalStatus? OperationalStatus,
@@ -82,14 +82,6 @@ public sealed class BloodDonationCenterService(
         {
             query = query.Where(center => center.OperationalStatus == criteria.OperationalStatus);
         }
-        else
-        {
-            var now = DateTimeOffset.UtcNow;
-            query = query.Where(center =>
-                center.OperationalStatus != BloodDonationOperationalStatus.Closed &&
-                (center.EndsAt == null || center.EndsAt > now));
-        }
-
         if (criteria.BloodTypes is not null)
         {
             query = query.Where(center => (center.BloodTypes & criteria.BloodTypes.Value) != 0);

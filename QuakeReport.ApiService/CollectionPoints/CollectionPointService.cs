@@ -9,7 +9,7 @@ using StorageGenerics.Core.Contracts;
 namespace QuakeReport.ApiService.CollectionPoints;
 
 public sealed record CollectionPointQueryCriteria(
-    Guid? EarthquakeId,
+    Guid EarthquakeId,
     string? SearchText,
     CollectionPointOperationalStatus? OperationalStatus,
     CollectionPointModerationStatus? ModerationStatus,
@@ -75,11 +75,6 @@ public sealed class CollectionPointService(
         {
             query = query.Where(point => point.OperationalStatus == criteria.OperationalStatus);
         }
-        else
-        {
-            query = query.Where(point => point.OperationalStatus != CollectionPointOperationalStatus.Closed);
-        }
-
         if (!string.IsNullOrWhiteSpace(criteria.SearchText))
         {
             var normalized = SearchTextNormalizer.Normalize(criteria.SearchText);

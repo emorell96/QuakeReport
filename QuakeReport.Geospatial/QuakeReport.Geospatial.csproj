@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\QuakeReport.Core\QuakeReport.Core.csproj" />
     <ProjectReference Include="..\QuakeReport.Data\QuakeReport.Data.csproj" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>

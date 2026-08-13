@@ -25,22 +25,22 @@ public sealed class IngestionController(
     private const int MaxPageText = 4000;
 
     [HttpPost("collection-points")]
-    public Task<IActionResult> CollectionPoint(IngestionCollectionPointRequest request, CancellationToken cancellationToken) =>
+    public Task<ActionResult<IngestionSubmissionResponse>> CollectionPoint(IngestionCollectionPointRequest request, CancellationToken cancellationToken) =>
         ExecuteAsync(IngestionEntityType.CollectionPoint, request.Source, request.Data, CreateCollectionPoint, cancellationToken);
 
     [HttpPost("blood-donation-centers")]
-    public Task<IActionResult> BloodDonationCenter(IngestionBloodDonationCenterRequest request, CancellationToken cancellationToken) =>
+    public Task<ActionResult<IngestionSubmissionResponse>> BloodDonationCenter(IngestionBloodDonationCenterRequest request, CancellationToken cancellationToken) =>
         ExecuteAsync(IngestionEntityType.BloodDonationCenter, request.Source, request.Data, CreateBloodDonationCenter, cancellationToken);
 
     [HttpPost("shelters")]
-    public Task<IActionResult> Shelter(IngestionShelterRequest request, CancellationToken cancellationToken) =>
+    public Task<ActionResult<IngestionSubmissionResponse>> Shelter(IngestionShelterRequest request, CancellationToken cancellationToken) =>
         ExecuteAsync(IngestionEntityType.Shelter, request.Source, request.Data, CreateShelter, cancellationToken);
 
     [HttpPost("help-requests")]
-    public Task<IActionResult> HelpRequest(IngestionHelpRequestRequest request, CancellationToken cancellationToken) =>
+    public Task<ActionResult<IngestionSubmissionResponse>> HelpRequest(IngestionHelpRequestRequest request, CancellationToken cancellationToken) =>
         ExecuteAsync(IngestionEntityType.HelpRequest, request.Source, request.Data, CreateHelpRequest, cancellationToken);
 
-    private async Task<IActionResult> ExecuteAsync<TData, TEntity>(
+    private async Task<ActionResult<IngestionSubmissionResponse>> ExecuteAsync<TData, TEntity>(
         IngestionEntityType entityType,
         IngestionSource source,
         TData data,

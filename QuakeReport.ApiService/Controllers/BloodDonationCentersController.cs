@@ -1,3 +1,4 @@
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using QuakeReport.ApiService.BloodDonationCenters;
 using QuakeReport.ApiService.Dtos;
@@ -6,10 +7,12 @@ using QuakeReport.ApiService.MissingPeople;
 using QuakeReport.ApiService.Pagination;
 using QuakeReport.ApiService.Security;
 using QuakeReport.ApiService.Text;
+using QuakeReport.ApiService.Validation;
 using QuakeReport.Contracts.Dtos;
 using QuakeReport.Contracts.Enums;
-using QuakeReport.Data.Models;
+using QuakeReport.Core.Models.API;
 using QuakeReport.Data.Geospatial;
+using QuakeReport.Data.Models;
 using StorageGenerics.Core.Models;
 using StorageGenerics.Extensions;
 
@@ -20,57 +23,92 @@ public class BloodDonationCentersController(
     IBloodDonationCenterService centers,
     IActiveEarthquakeService earthquakes,
     ITurnstileValidator turnstile,
-    IModerationKeyValidator moderationKey) : ControllerBase
+    IModerationKeyValidator moderationKey,
+    IValidator<PaginationRequest> paginationValidator,
+    IValidator<PagedRequest<BloodDonationCenterSearchFilter>> searchValidator) : ControllerBase
 {
-    [HttpGet]
-    public async Task<IActionResult> List(
-        [FromQuery] string? query = null,
-        [FromQuery] BloodDonationCenterType? centerType = null,
-        [FromQuery] BloodDonationOperationalStatus? operationalStatus = null,
-        [FromQuery] BloodDonationModerationStatus? moderationStatus = null,
-        [FromQuery] BloodTypeFlags? bloodTypes = null,
-        [FromQuery] BloodComponentFlags? components = null,
-        [FromQuery] BloodDonationSortOption sort = BloodDonationSortOption.Newest,
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
-        CancellationToken cancellationToken = default,
-        [FromQuery] double? latitude = null,
-        [FromQuery] double? longitude = null)
+
+    [HttpPost("search")]
+    public async Task<ActionResult<PagedResult<BloodDonationCenterSummaryResponse>>> Search(
+        [FromBody] PagedRequest<BloodDonationCenterSearchFilter> request,
+        CancellationToken cancellationToken = default)
     {
-        if (!PaginationParameters.IsValid(page, pageSize) || !Enum.IsDefined(sort) ||
-            (centerType is not null && !Enum.IsDefined(centerType.Value)) ||
-            (operationalStatus is not null && !Enum.IsDefined(operationalStatus.Value)) ||
-            (moderationStatus is not null && !Enum.IsDefined(moderationStatus.Value)) ||
-            !ValidBloodTypes(bloodTypes) || !ValidComponents(components))
+        var validation = await searchValidator.ValidateAsync(request, cancellationToken);
+        if (!validation.IsValid)
         {
-            return BadRequest("Parámetros inválidos.");
+            return BadRequest(validation.ToProblemDetails("Invalid blood-donation-center search."));
         }
 
-        if ((latitude.HasValue != longitude.HasValue) ||
-            (latitude.HasValue && !GeoPoint.IsValid(latitude.Value, longitude!.Value)))
+        var filter = request.Filter!;
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(
+            filter.EarthquakeId,
+            cancellationToken);
+        if (earthquakeId is null)
         {
-            return BadRequest("Coordenadas inválidas.");
+            return UnprocessableEntity("No active earthquake is configured.");
         }
 
-        var earthquake = await earthquakes.GetActiveEarthquakeAsync(cancellationToken);
         var criteria = new BloodDonationCenterQueryCriteria(
-            earthquake?.Id,
-            query,
-            centerType,
-            operationalStatus,
-            moderationStatus,
-            bloodTypes,
-            components,
-            sort,
-            latitude,
-            longitude);
+            earthquakeId.Value,
+            filter.SearchText,
+            filter.CenterType,
+            filter.OperationalStatus,
+            filter.ModerationStatus,
+            filter.BloodTypes,
+            filter.Components,
+            filter.Sort,
+            filter.CenterPoint?.Latitude,
+            filter.CenterPoint?.Longitude);
         var ordered = centers.GetOrderedQuery(criteria);
-        var projected = ordered.SelectOrdered(x => x.ToSummaryResponse());
-        return Ok(await projected.ToPagedResultAsync(page, pageSize, cancellationToken));
+        var projected = ordered.SelectOrdered(center => center.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            request.PageNumber,
+            request.PageSize,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<PagedResult<BloodDonationCenterSummaryResponse>>> List(
+        [FromQuery] PaginationRequest pagination,
+        CancellationToken cancellationToken = default)
+    {
+        var validation = await paginationValidator.ValidateAsync(pagination, cancellationToken);
+        if (!validation.IsValid)
+        {
+            return BadRequest(validation.ToProblemDetails("Invalid pagination parameters."));
+        }
+
+        var earthquakeId = await earthquakes.ResolveEarthquakeIdAsync(null, cancellationToken);
+        if (earthquakeId is null)
+        {
+            return UnprocessableEntity("No active earthquake is configured.");
+        }
+
+        var criteria = new BloodDonationCenterQueryCriteria(
+            earthquakeId.Value,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            BloodDonationSortOption.Newest,
+            null,
+            null);
+        var ordered = centers.GetOrderedQuery(criteria);
+        var projected = ordered.SelectOrdered(center => center.ToSummaryResponse());
+        var result = await projected.ToPagedResultAsync(
+            pagination.Page,
+            pagination.PageSize,
+            cancellationToken);
+
+        return Ok(result);
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<IActionResult> Get(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<BloodDonationCenterResponse>> Get(Guid id, CancellationToken cancellationToken)
     {
         var center = await centers.GetPublicAsync(id, cancellationToken);
         if (center is null)
@@ -84,7 +122,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpGet("{id:guid}/comments")]
-    public async Task<IActionResult> Comments(
+    public async Task<ActionResult<PagedResult<BloodDonationCenterCommentResponse>>> Comments(
         Guid id,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
@@ -105,7 +143,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPost]
-    public async Task<IActionResult> Create(CreateBloodDonationCenterRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<CreateBloodDonationCenterResponse>> Create(CreateBloodDonationCenterRequest request, CancellationToken cancellationToken)
     {
         var error = Validate(request);
         if (error is not null)
@@ -137,7 +175,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPost("management/lookup")]
-    public async Task<IActionResult> Lookup(BloodDonationCenterManagementCodeRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<BloodDonationCenterResponse>> Lookup(BloodDonationCenterManagementCodeRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.ManagementCode))
         {
@@ -151,7 +189,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> Update(
+    public async Task<ActionResult<BloodDonationCenterResponse>> Update(
         Guid id,
         UpdateBloodDonationCenterRequest request,
         [FromHeader(Name = "X-Management-Code")] string? code,
@@ -179,7 +217,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPatch("{id:guid}/status")]
-    public async Task<IActionResult> Status(
+    public async Task<ActionResult<BloodDonationCenterResponse>> Status(
         Guid id,
         UpdateBloodDonationCenterStatusRequest request,
         [FromHeader(Name = "X-Management-Code")] string? code,
@@ -206,7 +244,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPost("{id:guid}/comments")]
-    public async Task<IActionResult> Comment(Guid id, CreateBloodDonationCenterCommentRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<BloodDonationCenterCommentResponse>> Comment(Guid id, CreateBloodDonationCenterCommentRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Message) || request.Message.Length > 2000)
         {
@@ -241,7 +279,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPatch("{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> HideComment(
+    public async Task<ActionResult> HideComment(
         Guid id,
         Guid commentId,
         [FromHeader(Name = "X-Management-Code")] string? code,
@@ -265,7 +303,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPost("{id:guid}/abuse-reports")]
-    public async Task<IActionResult> Abuse(Guid id, BloodDonationCenterAbuseReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult> Abuse(Guid id, BloodDonationCenterAbuseReportRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Reason))
         {
@@ -299,7 +337,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpGet("moderation/pending")]
-    public async Task<IActionResult> Pending(
+    public async Task<ActionResult<PagedResult<BloodDonationCenterSummaryResponse>>> Pending(
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = PaginationParameters.DefaultPageSize,
@@ -320,7 +358,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPost("moderation/official")]
-    public async Task<IActionResult> Official(
+    public async Task<ActionResult<BloodDonationCenterResponse>> Official(
         CreateBloodDonationCenterRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
         [FromHeader(Name = "X-Moderator-Email")] string? moderator,
@@ -352,7 +390,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPatch("moderation/{id:guid}")]
-    public async Task<IActionResult> Moderate(
+    public async Task<ActionResult<BloodDonationCenterResponse>> Moderate(
         Guid id,
         UpdateBloodDonationCenterModerationRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -383,7 +421,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPut("moderation/{id:guid}")]
-    public async Task<IActionResult> ModeratorUpdate(
+    public async Task<ActionResult<BloodDonationCenterResponse>> ModeratorUpdate(
         Guid id,
         UpdateBloodDonationCenterRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -412,7 +450,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPatch("moderation/{id:guid}/status")]
-    public async Task<IActionResult> ModeratorStatus(
+    public async Task<ActionResult<BloodDonationCenterResponse>> ModeratorStatus(
         Guid id,
         UpdateBloodDonationCenterStatusRequest request,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -440,7 +478,7 @@ public class BloodDonationCentersController(
     }
 
     [HttpPatch("moderation/{id:guid}/comments/{commentId:guid}/visibility")]
-    public async Task<IActionResult> ModeratorComment(
+    public async Task<ActionResult> ModeratorComment(
         Guid id,
         Guid commentId,
         [FromHeader(Name = "X-Moderation-Service-Key")] string? key,
@@ -567,18 +605,32 @@ public class BloodDonationCentersController(
         return null;
     }
 
-    private static bool ValidBloodTypes(BloodTypeFlags? value) =>
-        value is null || value.Value != BloodTypeFlags.None && (value.Value & ~(
-            BloodTypeFlags.APositive | BloodTypeFlags.ANegative |
-            BloodTypeFlags.BPositive | BloodTypeFlags.BNegative |
-            BloodTypeFlags.ABPositive | BloodTypeFlags.ABNegative |
-            BloodTypeFlags.OPositive | BloodTypeFlags.ONegative |
-            BloodTypeFlags.Unknown)) == 0;
+    private static bool ValidBloodTypes(BloodTypeFlags value)
+    {
+        const BloodTypeFlags validValues =
+            BloodTypeFlags.APositive |
+            BloodTypeFlags.ANegative |
+            BloodTypeFlags.BPositive |
+            BloodTypeFlags.BNegative |
+            BloodTypeFlags.ABPositive |
+            BloodTypeFlags.ABNegative |
+            BloodTypeFlags.OPositive |
+            BloodTypeFlags.ONegative |
+            BloodTypeFlags.Unknown;
 
-    private static bool ValidComponents(BloodComponentFlags? value) =>
-        value is null || value.Value != BloodComponentFlags.None && (value.Value & ~(
-            BloodComponentFlags.WholeBlood | BloodComponentFlags.RedBloodCells |
-            BloodComponentFlags.Plasma | BloodComponentFlags.Platelets |
-            BloodComponentFlags.Unknown)) == 0;
+        return value != BloodTypeFlags.None && (value & ~validValues) == 0;
+    }
+
+    private static bool ValidComponents(BloodComponentFlags value)
+    {
+        const BloodComponentFlags validValues =
+            BloodComponentFlags.WholeBlood |
+            BloodComponentFlags.RedBloodCells |
+            BloodComponentFlags.Plasma |
+            BloodComponentFlags.Platelets |
+            BloodComponentFlags.Unknown;
+
+        return value != BloodComponentFlags.None && (value & ~validValues) == 0;
+    }
 
 }

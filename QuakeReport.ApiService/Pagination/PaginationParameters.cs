@@ -7,4 +7,5 @@ public static class PaginationParameters
 
     public static bool IsValid(int page, int pageSize) =>
         page >= 1 && pageSize is >= 1 and <= MaxPageSize;
+
 }

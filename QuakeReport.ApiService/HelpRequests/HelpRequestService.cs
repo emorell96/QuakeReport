@@ -8,7 +8,7 @@ using StorageGenerics.Core.Contracts;
 namespace QuakeReport.ApiService.HelpRequests;
 
 public sealed record HelpRequestQueryCriteria(
-    Guid? EarthquakeId,
+    Guid EarthquakeId,
     string? SearchText,
     HelpRequestPriority? Priority,
     HelpNeedCategory? Category,
@@ -63,9 +63,10 @@ public sealed class HelpRequestService(
                 request.EarthquakeId == criteria.EarthquakeId &&
                 request.ModerationStatus != HelpRequestModerationStatus.Rejected);
 
-        query = criteria.Status is null
-            ? query.Where(request => request.Status != HelpRequestStatus.Resolved)
-            : query.Where(request => request.Status == criteria.Status);
+        if (criteria.Status is not null)
+        {
+            query = query.Where(request => request.Status == criteria.Status);
+        }
 
         if (criteria.Priority is not null)
         {

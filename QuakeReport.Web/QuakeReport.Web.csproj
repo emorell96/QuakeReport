@@ -10,6 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\QuakeReport.ServiceDefaults\QuakeReport.ServiceDefaults.csproj" />
     <ProjectReference Include="..\QuakeReport.Contracts\QuakeReport.Contracts.csproj" />
+    <ProjectReference Include="..\QuakeReport.Core\QuakeReport.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
