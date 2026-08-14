@@ -134,12 +134,12 @@ public sealed class GooglePlacesService(
 
     private void AddGoogleHeaders(HttpRequestMessage request, string fieldMask)
     {
-        var apiKey = configuration["GoogleMaps:ApiKey"]
-            ?? configuration["GOOGLE_MAPS_API_KEY"];
+        var apiKey = configuration["GoogleMaps:PrivateApiKey"]
+            ?? configuration["GOOGLE_MAPS_PRIVATE_API_KEY"];
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             throw new InvalidOperationException(
-                "Google Maps API key is not configured. Set the GoogleMaps:ApiKey or GOOGLE_MAPS_API_KEY user secret.");
+                "Google Maps API key is not configured. Set the GoogleMaps:PrivateApiKey or GOOGLE_MAPS_PRIVATE_API_KEY user secret.");
         }
 
         request.Headers.Add("X-Goog-Api-Key", apiKey);

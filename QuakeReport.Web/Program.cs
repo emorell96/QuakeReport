@@ -24,10 +24,12 @@ builder.Services.AddRazorComponents()
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddMudServices();
+
 builder.Services.AddBlazorGoogleMaps(
     builder.Configuration["GoogleMaps:ApiKey"] ??
     builder.Configuration["GOOGLE_MAPS_API_KEY"] ??
     string.Empty);
+
 builder.Services.AddOutputCache();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

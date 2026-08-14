@@ -73,7 +73,11 @@ Un captcha (Cloudflare Turnstile) protege los formularios contra spam.
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Docker](https://www.docker.com/) (para los contenedores de PostgreSQL y el
   emulador de Azure Storage)
-- Una clave de la API de Google Maps (Places + Geocoding)
+- Dos claves de Google Maps Platform:
+  - Una clave pública, restringida a los dominios autorizados, para el mapa
+    cargado en el navegador.
+  - Una clave privada para las solicitudes de Places y Geocoding realizadas
+    desde el servidor.
 
 ### Pasos
 
@@ -83,7 +87,13 @@ Un captcha (Cloudflare Turnstile) protege los formularios contra spam.
 
    ```powershell
    dotnet user-secrets set "GOOGLE_MAPS_API_KEY" "<tu-clave>" --project QuakeReport.Web
+   dotnet user-secrets set "GOOGLE_MAPS_PRIVATE_API_KEY" "<tu-clave-privada>" --project QuakeReport.Web
    ```
+
+   `GOOGLE_MAPS_API_KEY` se entrega al navegador y debe restringirse por
+   referente HTTP a los dominios autorizados. `GOOGLE_MAPS_PRIVATE_API_KEY`
+   solo se usa en el servidor para Places y Geocoding; limita esta clave a las
+   API necesarias y configura cuotas apropiadas.
 
 2. Ejecuta el `AppHost` (esto levanta todos los servicios, incluyendo los
    contenedores de PostgreSQL y del emulador de Storage, vía Docker):
@@ -170,11 +180,13 @@ installation folders to that terminal's `PATH`:
 $env:Path += ";$env:USERPROFILE\.aspire\bin;C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin"
 ```
 
-### Configuration and secret
+### Configuration and secrets
 
 Azure location and resource-group defaults are committed in the AppHost's
 production settings. Set the deployment values explicitly in Aspire's local
-configuration, and keep the Google key in the AppHost user-secret store:
+configuration, and keep both Google keys in the AppHost user-secret store. The
+public key is used by the browser map and should be restricted by HTTP referrer.
+The private key is used only by server-side Places and Geocoding requests:
 
 ```powershell
 aspire config set "Azure:SubscriptionId" "<subscription-id>"
@@ -186,10 +198,13 @@ aspire secret set "Parameters:existing-aca-environment-resource-group" "rg-terre
   --apphost QuakeReport.AppHost/QuakeReport.AppHost.csproj
 aspire secret set "Parameters:google-maps-api-key" "<google-api-key>" `
   --apphost QuakeReport.AppHost/QuakeReport.AppHost.csproj
+aspire secret set "Parameters:google-maps-private-api-key" "<google-private-api-key>" `
+  --apphost QuakeReport.AppHost/QuakeReport.AppHost.csproj
 ```
 
-For CI, provide the same values as `Azure__SubscriptionId` and
-`Parameters__google_maps_api_key` environment variables.
+For CI, provide the same values as `Azure__SubscriptionId`,
+`Parameters__google_maps_api_key`, and
+`Parameters__google_maps_private_api_key` environment variables.
 
 ### Validate without provisioning
 

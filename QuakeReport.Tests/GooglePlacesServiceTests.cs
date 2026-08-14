@@ -128,12 +128,37 @@ public class GooglePlacesServiceTests
         Assert.AreEqual("test-api-key", handler.ApiKey);
     }
 
+    [TestMethod]
+    public async Task ServerSideRequestsUsePrivateApiKeyWhenBothKeysAreConfigured()
+    {
+        var handler = new RecordingHandler(_ => JsonResponse("{}"));
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["GoogleMaps:ApiKey"] = "public-browser-key",
+                ["GoogleMaps:PrivateApiKey"] = "private-server-key",
+            })
+            .Build();
+        var client = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://places.googleapis.com/"),
+        };
+        var service = new GooglePlacesService(
+            client,
+            configuration,
+            NullLogger<GooglePlacesService>.Instance);
+
+        await service.ReverseGeocodeAsync(52.1582, 4.4928);
+
+        Assert.AreEqual("private-server-key", handler.ApiKey);
+    }
+
     private static GooglePlacesService CreateService(HttpMessageHandler handler)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["GoogleMaps:ApiKey"] = "test-api-key",
+                ["GoogleMaps:PrivateApiKey"] = "test-api-key",
             })
             .Build();
         var client = new HttpClient(handler)

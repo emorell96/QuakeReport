@@ -19,6 +19,7 @@ builder.AddAzureContainerAppEnvironment("quake-report-env")
 
 // Example shape: AIzaSy... (Google Maps Platform API key)
 var googleMapsApiKey = builder.AddParameter("google-maps-api-key", secret: true);
+var googleMapsPrivateApiKey = builder.AddParameter("google-maps-private-api-key", secret: true);
 // Example shape: a long random value such as development-only-missing-person-id-hmac-key
 var missingPersonIdHmacKey = builder.AddParameter("missing-person-id-hmac-key", secret: true);
 // Example/test shape: 1x00000000000000000000AA
@@ -123,7 +124,7 @@ var apiService = builder.AddProject<Projects.QuakeReport_ApiService>("apiservice
     .WithEnvironment("Turnstile__SecretKey", turnstileSecretKey)
     .WithEnvironment("Moderation__ApiKey", moderationApiKey)
     .WithEnvironment("Ingestion__ApiKey", ingestionApiKey)
-    .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
+    .WithEnvironment("GoogleMaps__ApiKey", googleMapsPrivateApiKey)
     .PublishAsAzureContainerApp((_, app) =>
     {
         app.Template.Scale.MinReplicas = 0;
@@ -135,7 +136,7 @@ var geocodingWorker = builder.AddProject<Projects.QuakeReport_GeocodingWorker>("
     .WithReference(quakeReportDb)
     .WaitFor(quakeReportDb)
     .WaitForCompletion(migrationService)
-    .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
+    .WithEnvironment("GoogleMaps__ApiKey", googleMapsPrivateApiKey)
     .WithAzureUserAssignedIdentity(geocodingWorkerIdentity)
     .WithExplicitStart()
     .PublishAsAzureContainerAppJob();
@@ -152,6 +153,7 @@ var webFrontend = builder.AddProject<Projects.QuakeReport_Web>("webfrontend")
     .WaitFor(apiService)
     .WithAzureUserAssignedIdentity(webFrontendIdentity)
     .WithEnvironment("GoogleMaps__ApiKey", googleMapsApiKey)
+    .WithEnvironment("GoogleMaps__PrivateApiKey", googleMapsPrivateApiKey)
     .WithEnvironment("Turnstile__SiteKey", turnstileSiteKey)
     .WithEnvironment("Moderation__ApiKey", moderationApiKey)
     .WithEnvironment("CloudflareAccess__TeamDomain", cloudflareAccessTeamDomain)
